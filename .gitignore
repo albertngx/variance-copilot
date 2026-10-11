@@ -36,3 +36,6 @@ cdk.out/
 # OS / editors
 .DS_Store
 .idea/
+
+# Local agent instructions
+AGENTS.md
