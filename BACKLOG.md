@@ -57,63 +57,63 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 - Create `pyproject.toml` (Python 3.12, `uv`), `src/variance_copilot/` package with the sub-packages from §23, `tests/` sub-folders, `.gitignore`, `.env.example`, `README.md` stub.
 - **Acceptance criteria**
   - [ ] `uv sync` succeeds from a clean clone; `uv.lock` committed.
-  - [ ] `python -c "import variance_copilot"` works inside the venv.
-  - [ ] Directory tree matches §23 (empty packages have `__init__.py`).
-  - [ ] `corpus/generated/`, `eval/reports/`, `generated/` and `.env` are git-ignored.
+  - [x] `python -c "import variance_copilot"` works inside the venv.
+  - [x] Directory tree matches §23 (empty packages have `__init__.py`).
+  - [x] `corpus/generated/`, `eval/reports/`, `generated/` and `.env` are git-ignored.
 
 #### M0-02 Code quality tooling
 - **Spec:** §21, §22 · **Priority:** Must · **Size:** S · **Depends on:** M0-01
 - Configure Ruff (lint + format), mypy strict on `src/`, pre-commit hooks (ruff, mypy, gitleaks, end-of-file, trailing whitespace).
 - **Acceptance criteria**
-  - [ ] `make lint` runs ruff check, ruff format --check and mypy; passes on the skeleton.
-  - [ ] `pre-commit run --all-files` passes.
-  - [ ] A committed fake AWS key is caught by the gitleaks hook (verified once, then removed).
+  - [x] `make lint` runs ruff check, ruff format --check and mypy; passes on the skeleton.
+  - [x] `pre-commit run --all-files` passes.
+  - [x] A committed fake AWS key is caught by the gitleaks hook (verified once, then removed).
 
 #### M0-03 Test harness
 - **Spec:** §20 · **Priority:** Must · **Size:** M · **Depends on:** M0-01
 - pytest config with markers per layer (`unit`, `property`, `integration`, `contract`, `api`, `security`), Hypothesis profile (`ci` deterministic), Testcontainers fixture for `pgvector/pgvector:pg16`, coverage config.
 - **Acceptance criteria**
-  - [ ] `make test` runs unit + property + integration; `make test-unit` runs without Docker.
-  - [ ] A smoke integration test starts the container and runs `SELECT extversion FROM pg_extension WHERE extname='vector'`.
-  - [ ] Coverage report produced; thresholds configured (finance/guardrails ≥ 95%, overall ≥ 85%) but enforced only from M2 onward.
+  - [x] `make test` runs unit + property + integration; `make test-unit` runs without Docker.
+  - [x] A smoke integration test starts the container and runs `SELECT extversion FROM pg_extension WHERE extname='vector'`.
+  - [x] Coverage report produced; thresholds configured (finance/guardrails ≥ 95%, overall ≥ 85%) but enforced only from M2 onward.
 
 #### M0-04 Configuration module
 - **Spec:** §24 · **Priority:** Must · **Size:** S · **Depends on:** M0-01
 - `config.py` with `pydantic-settings` (prefix `VC_`) and typed loaders for `config/*.yaml` (materiality, anomalies, model prices, dev users).
 - **Acceptance criteria**
-  - [ ] Every variable in §24 exists with the documented default.
-  - [ ] Invalid values (e.g. `VC_ENV=foo`) fail fast with a clear error.
-  - [ ] `VC_AUTH_MODE=dev` with `VC_ENV=prod` is rejected at startup (§16.2).
-  - [ ] `config/materiality.yaml` from §9.7 and `config/dev_users.yaml` from §25 committed and load into typed models.
+  - [x] Every variable in §24 exists with the documented default.
+  - [x] Invalid values (e.g. `VC_ENV=foo`) fail fast with a clear error.
+  - [x] `VC_AUTH_MODE=dev` with `VC_ENV=prod` is rejected at startup (§16.2).
+  - [x] `config/materiality.yaml` from §9.7 and `config/dev_users.yaml` from §25 committed and load into typed models.
 
 #### M0-05 Docker Compose and Makefile
 - **Spec:** §25 · **Priority:** Must · **Size:** S · **Depends on:** M0-01
 - `docker-compose.yml` (db, otel-collector, jaeger; `api` service added in M6) with pinned image versions; Makefile targets `up`, `down`, `migrate`, `seed`, `corpus`, `test`, `lint`, `eval`.
 - **Acceptance criteria**
-  - [ ] `make up` brings PostgreSQL + pgvector to healthy; Jaeger UI reachable on :16686.
-  - [ ] All image tags pinned (no `latest`).
-  - [ ] Targets not yet implemented exit non-zero with "not implemented (Mx)".
+  - [x] `make up` brings PostgreSQL + pgvector to healthy; Jaeger UI reachable on :16686.
+  - [x] All image tags pinned (no `latest`).
+  - [x] Targets not yet implemented exit non-zero with "not implemented (Mx)".
 
 #### M0-06 CI skeleton
 - **Spec:** §27 · **Priority:** Must · **Size:** M · **Depends on:** M0-02, M0-03
 - `.github/workflows/ci.yml` with lint/type, unit/property, integration (pg16 service container), `pip-audit`, `gitleaks`. Later epics add their steps.
 - **Acceptance criteria**
-  - [ ] CI runs on every PR and push to `main`, and passes on the skeleton.
+  - [ ] CI runs on every PR and push to `master`, and passes on the skeleton.
   - [ ] `uv` cache configured; total runtime < 5 min on the skeleton.
-  - [ ] Branch protection on `main` documented in README (require CI + one review).
+  - [x] Branch protection on `main` documented in README (require CI + one review).
 
 #### M0-07 CLI skeleton
 - **Spec:** §17 · **Priority:** Must · **Size:** S · **Depends on:** M0-01
 - Typer app `vc` with command groups `db`, `seed`, `corpus`, `ingest`, `ask`, `commentary`, `anomalies`, `eval`, `audit`, `auth` (stubs).
 - **Acceptance criteria**
-  - [ ] `uv run vc --help` lists all groups from §17.
-  - [ ] Entry point registered in `pyproject.toml`.
+  - [x] `uv run vc --help` lists all groups from §17.
+  - [x] Entry point registered in `pyproject.toml`.
 
 #### M0-08 ADR and docs scaffolding
 - **Spec:** §6.4, §23 · **Priority:** Must · **Size:** S
 - ADR template plus ADR-001..008 stubs (title, status *Accepted*, context/decision/consequences copied from §6.4), `docs/architecture.md` stub with the §6.1 diagram. ADR-009 (MCP) is already written.
 - **Acceptance criteria**
-  - [ ] `docs/adr/0000-template.md` and ADR-001..009 exist, follow the template's structure and render on GitHub.
+  - [x] `docs/adr/0000-template.md` and ADR-001..009 exist, follow the template's structure and render on GitHub.
 
 ---
 

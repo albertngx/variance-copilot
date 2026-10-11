@@ -1,0 +1,16 @@
+# Materiality thresholds (SPEC §9.7). Amounts in group currency.
+version: 1
+currency: USD
+pnl_line:
+  group:
+    absolute: 10000000
+    relative: 0.05
+    relative_floor: 2000000
+  company_code:
+    absolute: 2000000
+    relative: 0.05
+    relative_floor: 1000000
+drilldown:
+  pareto_coverage: 0.80
+  max_contributors: 5
+  min_contributor: 250000

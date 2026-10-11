@@ -1,0 +1,115 @@
+[project]
+name = "variance-copilot"
+version = "0.1.0"
+description = "Grounded explanations of actual-vs-plan variances for FP&A teams"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "pyyaml>=6.0",
+    "typer>=0.15",
+]
+
+[project.scripts]
+vc = "variance_copilot.cli:app"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.120",
+    "mypy>=1.13",
+    "pip-audit>=2.7",
+    "pre-commit>=4.0",
+    "psycopg[binary]>=3.2",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "ruff>=0.8",
+    "testcontainers[postgres]>=4.9",
+    "types-pyyaml>=6.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+# --- Ruff ---------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["*.md"]  # SPEC and docs are prose; their code blocks are illustrative
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "B",        # bugbear
+    "UP",       # pyupgrade
+    "SIM",      # simplify
+    "RUF",      # ruff-specific
+    "S",        # bandit
+    "N",        # naming
+    "C4",       # comprehensions
+    "PT",       # pytest style
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]  # assert is how pytest works
+
+[tool.ruff.lint.isort]
+known-first-party = ["variance_copilot"]
+
+# --- mypy ---------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["testcontainers.*"]
+ignore_missing_imports = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+# --- pytest -------------------------------------------------------------
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib"]
+xfail_strict = true
+filterwarnings = ["error"]
+# Markers are applied automatically from the test's folder (tests/conftest.py).
+markers = [
+    "unit: fast, isolated tests (SPEC §20)",
+    "property: Hypothesis property-based tests",
+    "integration: needs PostgreSQL + pgvector (Docker or VC_TEST_DATABASE_URL)",
+    "contract: JSON Schema snapshot tests",
+    "api: HTTP API tests",
+    "security: audit immutability, grants, injection, scope",
+]
+
+# --- coverage -----------------------------------------------------------
+
+[tool.coverage.run]
+source = ["variance_copilot"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "\\.\\.\\."]
+
+# Thresholds checked by scripts/coverage_gate.py (SPEC §20).
+# Report-only until M2; set enforce = true when E2 starts.
+[tool.variance-copilot.coverage]
+enforce = false
+overall = 85
+packages = { finance = 95, guardrails = 95 }

@@ -36,6 +36,34 @@ flowchart LR
 
 Planned once built: API and CLI, deployment, observability.
 
+## Development environment (E0, implemented)
+
+Not a product part, so no numbered doc: the scaffolding every later task plugs into. Details and decisions per task are in `backlog/E0-bootstrap/` notes.
+
+```mermaid
+flowchart LR
+  subgraph Local
+    UV["uv sync<br/>(Python 3.12, uv.lock)"] --> LINT["make lint<br/>ruff · mypy --strict"]
+    UV --> TU["make test-unit<br/>unit + property"]
+    UP["make up<br/>db · otel-collector · jaeger"] --> T["make test<br/>+ integration, coverage gate"]
+    PC["pre-commit<br/>ruff · mypy · gitleaks"]
+  end
+  subgraph CI["GitHub Actions (ci.yml)"]
+    J1["lint"] ~~~ J2["unit"] ~~~ J3["integration<br/>pgvector service"] ~~~ J4["security<br/>pip-audit · gitleaks"]
+  end
+  Local -->|PR / push to master| CI
+```
+
+| Concern | Where |
+| --- | --- |
+| Packaging, tool config | `pyproject.toml` (Ruff, mypy, pytest markers, coverage thresholds) |
+| Settings and YAML config | `src/variance_copilot/config.py`, `config/*.yaml`; see §24 |
+| CLI stubs | `src/variance_copilot/cli.py` (each stub names its milestone) |
+| Test layers | `tests/<layer>/`; marker applied from the folder; DB fixture in `tests/integration/conftest.py` |
+| Local stack | `docker-compose.yml`, `ops/otel-collector.yaml`, `Makefile` |
+| CI | `.github/workflows/ci.yml`; coverage gate `scripts/coverage_gate.py` (report-only until M2) |
+
+Open spec gap: §24 refers to §12.3 for the `VC_MAX_COST_USD_PER_RUN` default, but §12.3 has no cost value. Default is USD 1.00 until SPEC.md says otherwise.
 
 ## Decisions log
 

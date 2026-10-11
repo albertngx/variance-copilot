@@ -1,0 +1,27 @@
+# Anomaly rule thresholds (SPEC §9.9). Amounts in group currency.
+version: 1
+currency: USD
+rules:
+  A1:  # functional area mismatch
+    threshold: 250000
+  A2:  # vendor and cost center mismatch
+    threshold: 250000
+  A3:  # cut-off
+    threshold: 250000
+  A4:  # reversal or reclass of prior period
+    threshold: 250000
+  A5:  # spike vs trailing months
+    threshold: 1000000
+    z_score: 3
+    trailing_months: 12
+  A6:  # large manual entry
+    threshold: 1000000
+    document_types: [SA]
+    round_multiple: 100000
+    days_before_close: 2
+  A7:  # intercompany mismatch
+    threshold: 10000
+  A8:  # unusual GTN rate (threshold is the impact)
+    threshold: 1000000
+    deviation_pp: 5
+    trailing_months: 6

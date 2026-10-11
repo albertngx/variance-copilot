@@ -1,0 +1,8 @@
+# LLM prices per million tokens, keyed by model ID (SPEC §15.5).
+# Add an entry for each model pinned in VC_LLM_MODEL / VC_JUDGE_MODEL (M3).
+version: 1
+currency: USD
+models:
+  replay:
+    input_per_mtok: 0
+    output_per_mtok: 0
