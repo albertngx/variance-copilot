@@ -2,9 +2,10 @@
 
 | | |
 | --- | --- |
-| **Source** | [SPEC.md](SPEC.md) v1.0 (section references are `§n`) |
+| **Source** | [SPEC.md](SPEC.md) v1.1 (section references are `§n`) |
+| **Decisions** | [ADR-009](docs/adr/0009-mcp-tool-layer.md) MCP tool layer |
 | **Structure** | One epic per milestone (§28.1); tasks are `M<epic>-<nn>` |
-| **Last updated** | 2026-10-12 |
+| **Last updated** | 2026-10-12 (ADR-009) |
 
 ## How to read this
 
@@ -27,7 +28,7 @@ Build the `ci` data profile and three golden cases end to end before broadening:
 
 ```text
 M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
-  → M2-01..05, M2-10..12 → M3-01..08 → M3-10  ← first end-to-end answer
+  → M2-01..05, M2-10..12, M2-17 (MCP) → M3-01..08 → M3-10  ← first end-to-end answer
   → M5-01, M5-03, M5-09 → M7-01..06 (replay gates) → widen everything else
 ```
 
@@ -37,7 +38,7 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 | --- | --- | --- | --- |
 | [E0](#e0--bootstrap-m0) | M0 Bootstrap | Must | `make up && make test` passes locally and in CI |
 | [E1](#e1--data-foundation-m1) | M1 Data foundation | Must | V-01..V-10 pass; determinism test passes; manifest and ground truth produced |
-| [E2](#e2--finance-engine-and-tools-m2) | M2 Finance engine and tools | Must | Property tests pass; tool contracts snapshotted; RLS tests pass |
+| [E2](#e2--finance-engine-and-tools-m2) | M2 Finance engine and tools | Must | Property tests pass; MCP tool contracts snapshotted; RLS tests pass; all tools callable through an MCP client session |
 | [E3](#e3--agent-core-m3) | M3 Agent core | Must | End-to-end answers for three golden cases with valid placeholders |
 | [E4](#e4--retrieval-and-corpus-m4) | M4 Retrieval and corpus | Must | Policy golden cases pass; citations render |
 | [E5](#e5--guardrails-and-audit-m5) | M5 Guardrails and audit | Must | Security and guardrail tests pass; chain verification passes |
@@ -110,9 +111,9 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 
 #### M0-08 ADR and docs scaffolding
 - **Spec:** §6.4, §23 · **Priority:** Must · **Size:** S
-- ADR template plus ADR-001..008 stubs (title, status *Accepted*, context/decision/consequences copied from §6.4), `docs/architecture.md` stub with the §6.1 diagram.
+- ADR template plus ADR-001..008 stubs (title, status *Accepted*, context/decision/consequences copied from §6.4), `docs/architecture.md` stub with the §6.1 diagram. ADR-009 (MCP) is already written.
 - **Acceptance criteria**
-  - [ ] `docs/adr/0000-template.md` and eight ADR files exist and render on GitHub.
+  - [ ] `docs/adr/0000-template.md` and ADR-001..009 exist, follow the template's structure and render on GitHub.
 
 ---
 
@@ -274,7 +275,7 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 
 ## E2 — Finance engine and tools (M2)
 
-**Goal:** every number the system shows comes from tested, deterministic code and is registered as a fact.
+**Goal:** every number the system shows comes from tested, deterministic code and is registered as a fact; the tools are reachable through one MCP interface (ADR-009).
 
 ### Finance engine (`variance_copilot.finance`)
 
@@ -352,9 +353,11 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
   - [ ] Facts persisted to `audit.fact` in the same transaction as the `FACTS_REGISTERED` event (once M5-01 exists).
 
 #### M2-11 Tool framework
-- **Spec:** §10.1, §10.3 (common types) · **Priority:** Must · **Size:** M · **Depends on:** M1-06, M2-10
-- Registry, Pydantic input models (`scope`, `period`, `currency_basis`, `basis`, versions), effective-scope echo, warnings, structured errors, limits, deterministic ordering, JSON-schema export for the LLM.
+- **Spec:** §10.1, §10.3 (common types), §10.5 rule 1 · **Priority:** Must · **Size:** M · **Depends on:** M1-06, M2-10
+- Transport-agnostic tools: each is `(input: PydanticModel, ctx: ToolContext) -> PydanticModel`. Registry, common input models (`scope`, `period`, `currency_basis`, `basis`, versions), `ToolContext` (principal, company scope, roles, run ID, tool call ID), effective-scope echo, warnings, structured errors, limits, deterministic ordering. No MCP code here; M2-17 adapts the registry.
 - **Acceptance criteria**
+  - [ ] Tools are testable as plain functions with a `ToolContext`; no transport imports in `tools/`.
+  - [ ] Company scope is read only from `ToolContext`, never from tool inputs.
   - [ ] Each call runs in its own RLS transaction; 10 s tool timeout.
   - [ ] `GROUP` scope requires `group_analyst` and excludes trading-partner lines (I-06).
   - [ ] Errors return `{error: {code, message}}`, never raise to the loop.
@@ -384,16 +387,46 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
   - [ ] Group totals exclude every trading-partner line; E10 shows zero group impact.
 
 #### M2-15 Tool contract snapshots
-- **Spec:** §20 (contract) · **Priority:** Must · **Size:** S · **Depends on:** M2-12, M2-13
+- **Spec:** §20 (contract), §10.5 rule 8 · **Priority:** Must · **Size:** S · **Depends on:** M2-12, M2-13, M2-17
 - **Acceptance criteria**
-  - [ ] JSON schemas of all tool inputs and outputs snapshotted in `tests/contract/`.
+  - [ ] The MCP `tools/list` result (names, descriptions, input and output schemas, annotations) snapshotted in `tests/contract/`.
   - [ ] CI fails on an unreviewed schema change (snapshot update needs an explicit flag).
 
 #### M2-16 Tool performance on the `full` profile
 - **Spec:** §21 · **Priority:** Should · **Size:** M · **Depends on:** M2-13
 - **Acceptance criteria**
-  - [ ] Benchmark script reports tool p95; all tools ≤ 500 ms on `full` (350k–450k lines).
+  - [ ] Benchmark script reports tool p95 measured through the in-memory MCP session; all tools ≤ 500 ms on `full` (350k–450k lines).
+  - [ ] MCP overhead (session vs direct function call) reported separately.
   - [ ] Any extra index added via migration with justification.
+
+### MCP server (ADR-009)
+
+#### M2-17 MCP server and in-process client
+- **Spec:** §10.5, ADR-009 · **Priority:** Must · **Size:** M · **Depends on:** M2-11
+- `variance_copilot.mcp`: an MCP server (official Python SDK) that registers every tool from the registry, plus a client factory the orchestrator uses over an in-memory transport. One session per run, bound server-side to the verified principal.
+- **Acceptance criteria**
+  - [ ] Every registry tool appears in `tools/list` with input and output schemas generated from its Pydantic models and `readOnlyHint: true`.
+  - [ ] Tool results return structured content (rows, fact IDs, facts, effective scope, warnings) plus a short text summary.
+  - [ ] Integration test: an MCP client session calls `compare` on the `ci` profile and gets the same structured result as a direct function call.
+  - [ ] Scope or run identifiers supplied in arguments or `_meta` are ignored (test).
+  - [ ] Tool errors arrive as structured results (`error.code`), not protocol errors.
+
+#### M2-18 Remote MCP endpoint with OAuth
+- **Spec:** §10.5 rules 3–5, §16.2, §16.3 · **Priority:** Should · **Size:** M · **Depends on:** M2-17, M6-02
+- Serve `/mcp` over streamable HTTP when `VC_MCP_HTTP_ENABLED=true`. The server acts as an OAuth 2.1 resource server and reuses the API's token validation. Each session creates an `app.run` of kind `MCP_SESSION`.
+- **Acceptance criteria**
+  - [ ] Requests without a valid token get `401` with the protected-resource metadata the MCP authorization spec requires.
+  - [ ] Company scope and roles come only from the token; `auditor` and `admin` cannot call finance tools.
+  - [ ] Limits: 60 calls/min per user and 500 per session, then a structured rate-limit error.
+  - [ ] `TOOL_CALL` audit events include the MCP client name and version.
+  - [ ] Verified with a real MCP client (e.g. MCP Inspector or Claude) against `make up`; steps documented in the README.
+
+#### M2-19 Validated-answer MCP tool
+- **Spec:** §10.5 rule 6 · **Priority:** Should · **Size:** S · **Depends on:** M2-17, M5-09
+- `ask_variance_copilot(question, context?)` runs the full guarded Q&A flow and returns the rendered answer, structured answer, run ID and validation status.
+- **Acceptance criteria**
+  - [ ] Output identical to `POST /v1/questions` for the same question and user.
+  - [ ] Server instructions tell clients to present this tool's rendered text verbatim, and state that text derived from analysis tools is not validated.
 
 ---
 
@@ -435,8 +468,9 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
   - [ ] Loader returns rendered text and SHA-256; SHA stored on every run.
 
 #### M3-06 Agent loop
-- **Spec:** §6.2, §12.3, §12.6, §15.5 · **Priority:** Must · **Size:** L · **Depends on:** M2-12, M3-01, M3-04, M3-05
+- **Spec:** §6.2, §12.3, §12.6, §15.5, §10.5 · **Priority:** Must · **Size:** L · **Depends on:** M2-12, M2-17, M3-01, M3-04, M3-05
 - **Acceptance criteria**
+  - [ ] Tools are discovered and called through one MCP client session per run (in-memory by default, streamable HTTP when `VC_MCP_TRANSPORT=http`); tool schemas sent to the LLM come from `tools/list`.
   - [ ] Limits from §12.3 enforced (turns, tool calls, parallelism 4, wall clock, output tokens, cost, one repair).
   - [ ] Cost computed from `config/model_prices.yaml` after every call; run aborts with `ABORTED_BUDGET` when exceeded.
   - [ ] Temperature 0; model ID pinned per environment.
@@ -532,6 +566,13 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
   - [ ] Tool returns chunk IDs, titles, section paths, scores; content wrapped as untrusted (§13.5).
   - [ ] `RETRIEVAL` audit event with query, filters, chunk IDs, scores.
   - [ ] Policy golden cases (UC-08) answered with rendered citations.
+  - [ ] Registered in the tool registry, so it is exposed through MCP like every other tool.
+
+#### M4-10 Policy documents as MCP resources
+- **Spec:** §10.5 rule 7 · **Priority:** Could · **Size:** S · **Depends on:** M4-04, M2-17
+- **Acceptance criteria**
+  - [ ] Each ingested document is listed as an MCP resource `doc://<doc_id>`; reading it returns the current version's text.
+  - [ ] Effective-date and company-scope filters from §11.6 apply to resource listing and reading.
 
 #### M4-09 Corpus leakage scan
 - **Spec:** §11.2, §27 step 7 · **Priority:** Must · **Size:** S
@@ -608,6 +649,7 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
   - [ ] Every run emits `RUN_STARTED` … `RUN_COMPLETED`/`RUN_FAILED` with the payloads in §15.1.
   - [ ] `VC_STORE_LLM_CONTENT` controls full content; hashes always stored.
   - [ ] Questions appear in audit only, never in application logs.
+  - [ ] `TOOL_CALL` events carry the MCP session and client identity for every call, internal or remote.
 
 #### M5-11 Observability
 - **Spec:** §15.4 · **Priority:** Should · **Size:** M · **Depends on:** M3-06
@@ -619,7 +661,8 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 - **Spec:** §18.1, §20 (security) · **Priority:** Must · **Size:** M · **Depends on:** M5-01, M2-14
 - **Acceptance criteria**
   - [ ] Tests for audit immutability, role grants (tool role cannot read `audit`/`truth`), scope labelling, injection fixtures.
-  - [ ] Each threat row in §18.1 maps to at least one test or a documented control.
+  - [ ] Each threat row in §18.1 maps to at least one test or a documented control, including "Misuse through MCP".
+  - [ ] MCP tests: no token, expired token, wrong audience, scope injected through arguments or `_meta`, group scope for a non-group user.
 
 ---
 
@@ -639,6 +682,7 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
   - [ ] Dev HS256 tokens via `vc auth dev-token --user <name>`; disabled when `VC_ENV=prod`.
   - [ ] OIDC: JWKS signature, issuer, audience, expiry; reads `sub`, `vc_roles`, `vc_company_scope`.
   - [ ] Role matrix from §16.3 enforced; admin has no finance data access.
+  - [ ] Token validation lives in one module shared by the REST API and `/mcp` (M2-18).
 
 #### M6-03 Idempotency and rate limits
 - **Spec:** §16.1 · **Priority:** Should · **Size:** S · **Depends on:** M6-02
@@ -786,7 +830,7 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 #### M8-02 Architecture page, ADRs and runbooks
 - **Spec:** §6.4, §23 · **Priority:** Must · **Size:** M
 - **Acceptance criteria**
-  - [ ] ADR-001..008 complete; ADRs added for OD-1..OD-6 as they are decided.
+  - [ ] ADR-001..009 complete; ADRs added for OD-1..OD-6 as they are decided.
   - [ ] `docs/architecture.md` covers components, flows and data model; runbooks for seeding, re-embedding, audit verification.
 
 #### M8-03 Demo script
@@ -839,6 +883,12 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 | OD-5 Cross-encoder reranking | After M7 baseline (not scheduled) |
 | OD-6 CDK vs Terraform | M8-04 |
 
+### Decisions → tasks
+
+| ADR | Affects |
+| --- | --- |
+| ADR-009 MCP tool layer | M2-11, M2-15..19, M3-06, M4-08, M4-10, M5-10, M5-12, M6-02 |
+
 ### Not scheduled (post-v1, §28.4)
 
-MCP server for the read-only tools · text-to-SQL over `rpt` views · streaming responses · reviewer UI · Entra ID On-Behalf-Of · journal partitioning and additional ledgers · cross-encoder reranking · LangGraph comparison implementation.
+Text-to-SQL over `rpt` views · streaming responses · reviewer UI · Entra ID On-Behalf-Of · journal partitioning and additional ledgers · cross-encoder reranking · LangGraph comparison implementation.
