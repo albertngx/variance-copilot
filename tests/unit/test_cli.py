@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pytest
 from typer.testing import CliRunner
 
@@ -7,6 +9,7 @@ from variance_copilot import __version__
 from variance_copilot.cli import app
 
 runner = CliRunner()
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 SPEC_GROUPS = (
     "db",
@@ -26,8 +29,9 @@ def test_help_lists_every_command_group() -> None:
     result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0
+    output = ANSI_ESCAPE.sub("", result.output)  # Rich styles output on CI even without a TTY
     for group in SPEC_GROUPS:
-        assert f" {group} " in result.output
+        assert f" {group} " in output
 
 
 def test_version() -> None:
