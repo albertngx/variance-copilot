@@ -44,7 +44,6 @@ def test_version() -> None:
 @pytest.mark.parametrize(
     ("args", "milestone"),
     [
-        (["db", "migrate"], "M1"),
         (["seed", "--profile", "ci"], "M1"),
         (["seed", "verify"], "M1"),
         (["corpus", "render"], "M4"),

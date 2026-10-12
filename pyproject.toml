@@ -5,9 +5,12 @@ description = "Grounded explanations of actual-vs-plan variances for FP&A teams"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "alembic>=1.14",
+    "psycopg[binary]>=3.2",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "pyyaml>=6.0",
+    "sqlalchemy>=2.0.36",
     "typer>=0.15",
 ]
 
@@ -20,7 +23,6 @@ dev = [
     "mypy>=1.13",
     "pip-audit>=2.7",
     "pre-commit>=4.0",
-    "psycopg[binary]>=3.2",
     "pytest>=8.3",
     "pytest-cov>=6.0",
     "ruff>=0.8",
@@ -56,7 +58,8 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]  # assert is how pytest works
+"tests/**" = ["S101", "S608"]  # pytest asserts; SQL built from test constants
+"migrations/versions/**" = ["E501"]  # DDL kept verbatim from SPEC §7.10
 
 [tool.ruff.lint.isort]
 known-first-party = ["variance_copilot"]

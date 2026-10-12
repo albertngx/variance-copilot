@@ -33,8 +33,8 @@ test: ## Unit, property and integration tests with coverage (needs Docker)
 test-unit: ## Unit and property tests only (no Docker)
 	$(UV) run pytest -m "unit or property"
 
-migrate: ## Apply database migrations
-	@echo "not implemented (M1)" >&2; exit 1
+migrate: ## Apply database migrations (VC_DATABASE_URL)
+	$(UV) run vc db migrate
 
 seed: ## Generate and load synthetic data (PROFILE, SEED)
 	@echo "not implemented (M1)" >&2; exit 1
