@@ -3,10 +3,10 @@
 | | |
 | --- | --- |
 | **Document** | `SPEC.md` (repository seed and source of truth) |
-| **Version** | 1.0 (initial) |
+| **Version** | 1.1 (ADR-009: MCP tool layer) |
 | **Owner** | Albert Navarro |
 | **Status** | Approved for implementation |
-| **Last updated** | 2026-10-10 |
+| **Last updated** | 2026-10-12 |
 
 Normative keywords **MUST**, **MUST NOT**, **SHOULD** and **MAY** follow RFC 2119. Anything that deviates from this document is recorded as an Architecture Decision Record (ADR) under `docs/adr/` and this file is updated in the same pull request.
 
@@ -174,10 +174,12 @@ flowchart LR
   subgraph Clients
     CLI["CLI (vc)"]
     APIC["API client"]
+    MCPC["External MCP client<br/>(Teams bot, Claude, Copilot Studio, agents)"]
   end
   subgraph Service["Variance Copilot service (FastAPI)"]
     AUTH["AuthN / AuthZ<br/>(OIDC JWT, RBAC, company scope)"]
     ORCH["Orchestrator<br/>(Q&A agent loop, commentary pipeline)"]
+    MCPS["MCP server<br/>(tool exposure, ADR-009)"]
     TOOLS["Tool layer<br/>(read-only, fact ledger)"]
     FIN["Finance engine<br/>(deterministic)"]
     RET["Retrieval<br/>(hybrid search)"]
@@ -201,7 +203,10 @@ flowchart LR
   APIC --> AUTH
   AUTH --> ORCH
   ORCH <--> LLM
-  ORCH --> TOOLS
+  MCPC --> AUTH
+  AUTH --> MCPS
+  ORCH -->|"MCP client"| MCPS
+  MCPS --> TOOLS
   TOOLS --> FIN
   FIN --> RPT
   RPT --> FINDB
@@ -235,7 +240,7 @@ sequenceDiagram
   loop until final answer or limits reached
     O->>L: messages + tool schemas
     L-->>O: tool calls
-    O->>T: execute (read-only, RLS context)
+    O->>T: execute via MCP session (read-only, RLS context)
     T-->>O: results + registered facts
     O->>A: TOOL_CALL, FACTS_REGISTERED
   end
@@ -274,6 +279,7 @@ This ordering keeps cost predictable, guarantees that every material variance is
 | ADR-006 | Row-level security by company code | Access control enforced by the database, not by prompts |
 | ADR-007 | Recorded LLM responses in CI, live evaluation nightly | Deterministic, free CI; real-model regression detection |
 | ADR-008 | Data model aligned with S/4HANA universal journal | Credible structure; easy mapping to real ERP extracts later |
+| ADR-009 | Tool layer exposed as an MCP server; the orchestrator is an MCP client | One tool interface for our agent and external clients (Teams, Copilot, Claude, other agents); standard protocol |
 
 ---
 
@@ -965,7 +971,7 @@ CREATE INDEX chunk_tsv_gin        ON doc.chunk USING gin (tsv);
 -- ===================================================================
 CREATE TABLE app.run (
     run_id         uuid        PRIMARY KEY,
-    kind           text        NOT NULL CHECK (kind IN ('QUESTION','COMMENTARY','EVAL')),
+    kind           text        NOT NULL CHECK (kind IN ('QUESTION','COMMENTARY','EVAL','MCP_SESSION')),
     requested_by   text        NOT NULL,
     company_scope  text[]      NOT NULL,
     status         text        NOT NULL CHECK (status IN (
@@ -1516,6 +1522,7 @@ Each finding returns: rule, severity (`LOW`, `MEDIUM`, `HIGH` by amount), eviden
 5. Output is deterministic: stable ordering (by `|Δ|` descending, then key).
 6. Limits: at most 200 rows (journal lines), at most 20 contributors, 5-second statement timeout, 10-second tool timeout.
 7. Errors are returned to the model as structured results (`error.code`, `error.message`), never as exceptions, and are recorded in the audit trail.
+8. Tools are invoked **only** through the MCP server (§10.5), by our orchestrator and by external clients alike.
 
 ### 10.2 Fact ledger
 
@@ -1623,6 +1630,36 @@ Output (abridged):
 ```
 
 The model sees row structure and fact IDs. It never needs to read or copy the digits.
+
+### 10.5 MCP server (ADR-009)
+
+The tool catalogue is exposed through a Model Context Protocol server (`variance_copilot.mcp`, official MCP Python SDK). It is the single invocation path for tools.
+
+```mermaid
+flowchart LR
+  ORCH["Orchestrator<br/>(MCP client)"] -->|"in-memory transport,<br/>session bound to verified principal"| S["MCP server"]
+  EXT["External MCP clients"] -->|"streamable HTTP /mcp<br/>OAuth 2.1 bearer token"| S
+  S --> CTX["ToolContext<br/>principal, scope, roles, run_id, call_id"]
+  CTX --> T["Tool functions<br/>(Pydantic in/out)"]
+  T --> FL["Fact ledger"]
+  T --> DB[("rpt views, RLS")]
+```
+
+**Rules**
+
+1. **Transport-agnostic tools.** Each tool is a function `(input: <PydanticModel>, ctx: ToolContext) -> <PydanticModel>`. The MCP server generates input and output schemas from the same models.
+2. **Structured output.** Tools declare an output schema and return structured content (rows, fact IDs, facts, effective scope, warnings) plus a short text summary. Every tool carries the `readOnlyHint` annotation.
+3. **Identity from the transport only.**
+   - In-process: the orchestrator opens one MCP session per run; the server binds the session to the principal the API has already verified.
+   - Remote: `/mcp` (streamable HTTP) acts as an OAuth 2.1 resource server per the MCP authorization specification and validates the same tokens as the REST API (§16.2). Development tokens are accepted only when `VC_ENV` is not `prod`.
+   - Company scope, roles and run identifiers in tool arguments or request `_meta` are ignored.
+4. **Sessions are runs.** A remote MCP session creates an `app.run` of kind `MCP_SESSION`; fact IDs, audit events and limits are scoped to it. `TOOL_CALL` events record the MCP client name and version.
+5. **Limits for remote sessions.** At most 60 tool calls per minute per user and 500 per session; §10.1 row and time limits apply unchanged.
+6. **Two tiers.**
+   - *Analysis tools* (§10.3): facts for power users and other agents. Text written by external clients from these results is not validated by §13; the server instructions state this.
+   - *Validated answer* (`ask_variance_copilot`, Should): runs the full guarded Q&A flow (§12, §13) and returns the rendered answer, run ID and validation status.
+7. Policy documents MAY also be exposed as MCP resources (`doc://<doc_id>`).
+8. Tool names, descriptions and schemas are part of the public contract and are snapshotted (§20).
 
 ---
 
@@ -1783,7 +1820,7 @@ for turn in 1..max_turns:
     audit LLM_CALL (model, params, token usage, cost, request/response hashes)
     if budget exceeded: abort (ABORTED_BUDGET)
     if completion has tool calls:
-        execute up to max_parallel calls concurrently (each in its own RLS transaction)
+        execute up to max_parallel calls concurrently through the run's MCP session (each in its own RLS transaction)
         register facts; audit TOOL_CALL and FACTS_REGISTERED
         append tool results to messages; continue
     else:
@@ -2083,6 +2120,7 @@ Per-call cost is computed from `config/model_prices.yaml` (input and output pric
 | Method | Path | Roles | Description |
 | --- | --- | --- | --- |
 | POST | `/v1/questions` | analyst, reviewer, group_analyst | Ask a question; returns the rendered and structured answer |
+| POST, GET | `/mcp` | analyst, reviewer, group_analyst | MCP streamable HTTP endpoint for external clients (§10.5) |
 | GET | `/v1/runs/{run_id}` | requester, reviewer in scope, auditor | Run summary and output |
 | GET | `/v1/runs/{run_id}/facts` | requester, reviewer in scope, auditor | Fact ledger for the run |
 | GET | `/v1/runs/{run_id}/trace` | reviewer in scope, auditor | Full audit event chain for the run |
@@ -2172,6 +2210,7 @@ The `vc` command (Typer) wraps the same services as the API.
 | Over-privileged database access | Tool query reads audit or truth | Separate roles, schema grants, views only, statement timeout |
 | Secret leakage | Keys in logs or repository | Secrets Manager or environment injection, log redaction, `gitleaks` in CI |
 | Denial of wallet | Loops or very long prompts | Per-run token and cost caps, per-user rate limits, maximum turns |
+| Misuse through MCP | External client calls tools without authorisation, widens scope through arguments, or restates numbers wrongly | OAuth 2.1 token validation on `/mcp`, scope from token only, per-session limits, audit of client identity, validated-answer tool for presentation (§10.5) |
 | Supply chain | Malicious dependency | Locked dependencies (`uv.lock`), `pip-audit`, Dependabot, container image scanning |
 | Data sent to model provider | Ledger details leave the region | EU region endpoints, enterprise terms without training on inputs, aggregates by default, journal-line tool capped at 200 rows |
 | Unauthorised approval | Author approves own commentary | Role checks, database constraint, revision-editor check |
@@ -2304,6 +2343,7 @@ Coverage targets: `finance` and `guardrails` packages at least 95% line coverage
 | Database | PostgreSQL 16 with pgvector (HNSW) |
 | Generator | NumPy (`Generator(PCG64)`), PyYAML, Jinja2 (memo templates) |
 | LLM and embeddings | boto3 (Bedrock Converse), `openai` (OpenAI and Azure OpenAI), `anthropic`, Ollama HTTP API |
+| Tool protocol | MCP Python SDK (server and client; in-memory and streamable HTTP transports) |
 | CLI | Typer |
 | Observability | OpenTelemetry SDK and OTLP exporter, structlog |
 | Testing | pytest, Hypothesis, Testcontainers, httpx |
@@ -2354,6 +2394,7 @@ variance-copilot/
 │   ├── api/                         # app, routers, auth, problems, rate limiting
 │   ├── agent/                       # loop, providers/, schemas, prompts, renderer
 │   ├── tools/                       # registry, fact ledger, one module per tool
+│   ├── mcp/                         # MCP server, auth, session-to-run binding, client for the orchestrator
 │   ├── finance/                     # translation, variance, bridges, core, materiality, anomalies, formatting
 │   ├── retrieval/                   # ingestion, chunking, embeddings, hybrid search
 │   ├── guardrails/                  # grounding, direction, citations, scope, injection
@@ -2412,6 +2453,9 @@ Settings are loaded with `pydantic-settings` from environment variables (prefix 
 | `VC_REPLAY_MODE` | `off` | `off`, `record`, `replay` |
 | `VC_OTEL_EXPORTER_OTLP_ENDPOINT` | — | Tracing and metrics endpoint |
 | `VC_LOG_LEVEL` | `INFO` | Log level |
+| `VC_MCP_HTTP_ENABLED` | `false` | Serve `/mcp` for external clients |
+| `VC_MCP_TRANSPORT` | `memory` | Orchestrator-to-tools transport: `memory` or `http` |
+| `VC_MCP_SERVER_URL` | — | Tool server URL when `VC_MCP_TRANSPORT=http` |
 
 ---
 
@@ -2519,13 +2563,13 @@ Branch protection requires `ci.yml` to pass and one review.
 | --- | --- | --- |
 | M0 Bootstrap | Repository, `uv`, Ruff, mypy, pytest, pre-commit, Makefile, Compose, CI skeleton, ADR template | `make up && make test` passes locally and in CI |
 | M1 Data foundation | Migrations (§7.10), master data YAML, generator (§8) for `ci` and `dev` profiles | V-01 to V-10 pass; determinism test passes; manifest and ground truth produced |
-| M2 Finance engine and tools | §9 and §10 with fact ledger and RLS | Property tests pass; tool contracts snapshotted; RLS tests pass |
+| M2 Finance engine and tools | §9 and §10 with fact ledger, RLS and MCP server | Property tests pass; tool contracts (MCP listing) snapshotted; RLS tests pass; all tools callable through an MCP client session |
 | M3 Agent core | One live provider plus replay, loop, schemas, renderer, `vc ask` | End-to-end answers for three golden cases with valid placeholders |
 | M4 Retrieval and corpus | Policies, memo templates, ingestion, hybrid search, citations | Policy golden cases pass; citations render |
 | M5 Guardrails and audit | Validators, direction check, scope classifier, injection defences, fallback, audit chain, `vc audit verify` | Security and guardrail tests pass; chain verification passes |
 | M6 API and review | Endpoints, development and OIDC auth, RBAC, commentary pipeline, review workflow | API tests pass; commentary approved end to end with segregation of duties |
 | M7 Evaluation and CI gates | At least 40 golden cases, matcher, metrics, recordings, gates, nightly live run | Replay gates enforced in CI; first nightly report |
-| M8 Deployment and documentation | CDK stacks (`synth`), README, architecture page, ADR-001 to ADR-008, demo script | `cdk synth` passes; README quickstart works from a clean clone |
+| M8 Deployment and documentation | CDK stacks (`synth`), README, architecture page, ADR-001 to ADR-009, demo script | `cdk synth` passes; README quickstart works from a clean clone |
 
 ### 28.2 Schedule (11–18 October 2026)
 
@@ -2544,12 +2588,11 @@ Branch protection requires `ci.yml` to pass and one review.
 
 - **Must (v1.0):** M0–M5, M7 with at least 25 cases and replay gates.
 - **Should:** M6 complete, M7 with 47 cases and nightly live runs.
-- **Could:** M8 deployment, cross-encoder reranking, LangGraph implementation of the agent for comparison, an MCP server exposing the read-only tools.
+- **Could:** M8 deployment, cross-encoder reranking, LangGraph implementation of the agent for comparison, MCP resources for policy documents.
 - **Won't (v1):** user interface, ERP write-back, balance sheet analysis.
 
 ### 28.4 Roadmap after v1.0
 
-- MCP server exposing the read-only tool catalogue to other assistants.
 - Text-to-SQL over `rpt` views with `sqlglot` validation and an allowlist of tables and functions.
 - Streaming responses (server-sent events).
 - Minimal reviewer UI.
@@ -2848,4 +2891,3 @@ Rendered output:
 > *Caveat: US10 reports in USD, so there is no FX effect.*
 >
 > *AI-generated answer · run 3f6c… · all figures traceable via* `GET /v1/runs/{run_id}/facts`
-

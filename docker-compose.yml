@@ -1,0 +1,36 @@
+# Local development stack (SPEC §25). The `api` service is added in M6.
+# Image tags are pinned; bump deliberately.
+services:
+  db:
+    image: pgvector/pgvector:0.8.7-pg16
+    environment:
+      POSTGRES_USER: vc_owner
+      POSTGRES_PASSWORD: ${VC_DB_PASSWORD:-localdev}
+      POSTGRES_DB: variance_copilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vc_owner -d variance_copilot"]
+      interval: 5s
+      retries: 20
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.162.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./ops/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    depends_on:
+      - jaeger
+
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0
+    ports:
+      - "16686:16686" # UI
+
+volumes:
+  pgdata: {}

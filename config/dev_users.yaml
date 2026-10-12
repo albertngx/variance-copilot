@@ -1,0 +1,19 @@
+# Local development identities (SPEC §3, §25). Used by `vc auth dev-token`; never in prod.
+version: 1
+users:
+  analyst_us:
+    roles: [analyst]
+    company_scope: [US10]
+  analyst_es:
+    roles: [analyst]
+    company_scope: [ES10, DE10]
+  reviewer_es:
+    roles: [reviewer]
+    company_scope: [ES10, DE10]
+  group_fpa:
+    roles: [group_analyst]
+    company_scope: [group]
+  auditor:
+    roles: [auditor]
+  admin:
+    roles: [admin]

@@ -1,1 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+coverage.json
+htmlcov/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Generated artefacts (never committed)
+corpus/generated/
+eval/reports/
+generated/
+
+# Local backlog working copy
 backlog/
+
+# Infra
+cdk.out/
+
+# OS / editors
+.DS_Store
+.idea/
+
+# Local agent instructions
+AGENTS.md
