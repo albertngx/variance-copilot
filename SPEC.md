@@ -3,10 +3,10 @@
 | | |
 | --- | --- |
 | **Document** | `SPEC.md` (repository seed and source of truth) |
-| **Version** | 1.1 (ADR-009: MCP tool layer) |
+| **Version** | 1.2 (ADR-010: DDL corrections) |
 | **Owner** | Albert Navarro |
 | **Status** | Approved for implementation |
-| **Last updated** | 2026-10-12 |
+| **Last updated** | 2026-10-13 |
 
 Normative keywords **MUST**, **MUST NOT**, **SHOULD** and **MAY** follow RFC 2119. Anything that deviates from this document is recorded as an Architecture Decision Record (ADR) under `docs/adr/` and this file is updated in the same pull request.
 
@@ -280,6 +280,7 @@ This ordering keeps cost predictable, guarantees that every material variance is
 | ADR-007 | Recorded LLM responses in CI, live evaluation nightly | Deterministic, free CI; real-model regression detection |
 | ADR-008 | Data model aligned with S/4HANA universal journal | Credible structure; easy mapping to real ERP extracts later |
 | ADR-009 | Tool layer exposed as an MCP server; the orchestrator is an MCP client | One tool interface for our agent and external clients (Teams, Copilot, Claude, other agents); standard protocol |
+| ADR-010 | Corrections to the §7.10 DDL: wider cost center keys, RLS on every `rpt` view, missing grants | The reference DDL could not load §7.6 names and leaked rows through one view |
 
 ---
 
@@ -594,7 +595,7 @@ CREATE TABLE md.profit_center (
 );
 
 CREATE TABLE md.cost_center (
-    cost_center        varchar(10) PRIMARY KEY,        -- CSKS-KOSTL
+    cost_center        varchar(20) PRIMARY KEY,        -- CSKS-KOSTL
     controlling_area   char(4)     NOT NULL REFERENCES md.controlling_area, -- CSKS-KOKRS
     company_code       char(4)     NOT NULL REFERENCES md.company_code,     -- CSKS-BUKRS
     profit_center      varchar(10) NOT NULL REFERENCES md.profit_center,    -- CSKS-PRCTR
@@ -672,7 +673,7 @@ CREATE TABLE md.wbs_element (
     wbs_element  varchar(24) PRIMARY KEY,              -- PRPS-POSID
     description  text        NOT NULL,                 -- PRPS-POST1
     company_code char(4)     NOT NULL REFERENCES md.company_code,
-    cost_center  varchar(10) NOT NULL REFERENCES md.cost_center,   -- responsible cost center
+    cost_center  varchar(20) NOT NULL REFERENCES md.cost_center,   -- responsible cost center
     brand        varchar(20) REFERENCES md.brand,
     project_type text        NOT NULL CHECK (project_type IN ('CLINICAL_TRIAL','RESEARCH','LIFECYCLE','OTHER')),
     phase        text
@@ -748,7 +749,7 @@ CREATE TABLE fin.journal_line (
     currency_gc       char(3)       NOT NULL,              -- ACDOCA-RKCUR
     quantity          numeric(19,3),                       -- ACDOCA-MSL (positive = units shipped)
     unit              varchar(3),                          -- ACDOCA-RUNIT
-    cost_center       varchar(10)   REFERENCES md.cost_center,      -- ACDOCA-RCNTR
+    cost_center       varchar(20)   REFERENCES md.cost_center,      -- ACDOCA-RCNTR
     profit_center     varchar(10)   REFERENCES md.profit_center,    -- ACDOCA-PRCTR
     functional_area   char(4)       REFERENCES md.functional_area,  -- ACDOCA-RFAREA
     segment           varchar(10)   REFERENCES md.segment,          -- ACDOCA-SEGMENT
@@ -789,7 +790,7 @@ CREATE TABLE fin.plan_line (
     period            smallint      NOT NULL CHECK (period BETWEEN 1 AND 12),  -- ACDOCP-POPER
     chart_of_accounts char(4)       NOT NULL,
     gl_account        varchar(10)   NOT NULL,                              -- ACDOCP-RACCT
-    cost_center       varchar(10)   REFERENCES md.cost_center,             -- ACDOCP-RCNTR
+    cost_center       varchar(20)   REFERENCES md.cost_center,             -- ACDOCP-RCNTR
     profit_center     varchar(10)   REFERENCES md.profit_center,           -- ACDOCP-PRCTR
     functional_area   char(4)       REFERENCES md.functional_area,         -- ACDOCP-RFAREA
     segment           varchar(10)   REFERENCES md.segment,                 -- ACDOCP-SEGMENT
@@ -813,7 +814,7 @@ CREATE TABLE fin.stat_key_figure (                     -- cf. CO statistical key
     company_code char(4)       NOT NULL REFERENCES md.company_code,
     fiscal_year  smallint      NOT NULL,
     period       smallint      NOT NULL,
-    cost_center  varchar(10)   NOT NULL REFERENCES md.cost_center,
+    cost_center  varchar(20)   NOT NULL REFERENCES md.cost_center,
     key_figure   text          NOT NULL CHECK (key_figure IN ('FTE','HEADCOUNT')),
     value        numeric(12,2) NOT NULL,
     PRIMARY KEY (version, company_code, fiscal_year, period, cost_center, key_figure)
@@ -902,7 +903,7 @@ LEFT JOIN md.material m ON m.material = pl.material
 WHERE ga.account_type IN ('P','S');
 
 -- Integrity view: must always be empty (checked by the generator and tests)
-CREATE VIEW rpt.unbalanced_documents AS
+CREATE VIEW rpt.unbalanced_documents WITH (security_invoker = true) AS
 SELECT company_code, fiscal_year, document_number,
        SUM(amount_lc) AS sum_lc, SUM(amount_gc) AS sum_gc
 FROM fin.journal_line
@@ -965,6 +966,8 @@ CREATE TABLE doc.chunk (
 
 CREATE INDEX chunk_embedding_hnsw ON doc.chunk USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX chunk_tsv_gin        ON doc.chunk USING gin (tsv);
+
+GRANT SELECT ON doc.document, doc.chunk TO vc_tool_reader;   -- section 4 ran before these existed
 
 -- ===================================================================
 -- 6. Operational state (app), audit, review, ground truth
@@ -1039,6 +1042,9 @@ GRANT USAGE ON SCHEMA audit TO vc_app, vc_auditor;
 GRANT INSERT, SELECT ON audit.event, audit.fact TO vc_app;
 GRANT SELECT ON audit.event, audit.fact TO vc_auditor;
 
+GRANT USAGE ON SCHEMA app, review TO vc_app;
+GRANT SELECT, INSERT, UPDATE ON app.run, app.idempotency_key TO vc_app;
+
 CREATE TABLE review.commentary (
     commentary_id    uuid        PRIMARY KEY,
     run_id           uuid        NOT NULL REFERENCES app.run,
@@ -1068,6 +1074,8 @@ CREATE TABLE review.commentary_revision (
     validation    jsonb       NOT NULL,
     PRIMARY KEY (commentary_id, revision)
 );
+
+GRANT SELECT, INSERT, UPDATE ON review.commentary, review.commentary_revision TO vc_app;
 
 CREATE TABLE truth.scenario_event (
     event_id                varchar(8)    PRIMARY KEY,

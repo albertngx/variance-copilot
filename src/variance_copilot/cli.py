@@ -50,9 +50,20 @@ app.add_typer(db_app, name="db")
 
 
 @db_app.command("migrate")
-def db_migrate() -> None:
-    """Apply Alembic migrations."""
-    _not_implemented("M1")
+def db_migrate(
+    revision: Annotated[str, typer.Option(help="Target Alembic revision.")] = "head",
+) -> None:
+    """Apply Alembic migrations to VC_DATABASE_URL."""
+    from variance_copilot.config import ConfigError
+    from variance_copilot.db import migrate
+    from variance_copilot.db.engine import database_url
+
+    try:
+        url = database_url()
+    except ConfigError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    migrate.upgrade(url, revision)
 
 
 # --- seed ----------------------------------------------------------------

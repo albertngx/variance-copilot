@@ -56,7 +56,7 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 - **Spec:** §22, §23 · **Priority:** Must · **Size:** S
 - Create `pyproject.toml` (Python 3.12, `uv`), `src/variance_copilot/` package with the sub-packages from §23, `tests/` sub-folders, `.gitignore`, `.env.example`, `README.md` stub.
 - **Acceptance criteria**
-  - [ ] `uv sync` succeeds from a clean clone; `uv.lock` committed.
+  - [x] `uv sync` succeeds from a clean clone; `uv.lock` committed.
   - [x] `python -c "import variance_copilot"` works inside the venv.
   - [x] Directory tree matches §23 (empty packages have `__init__.py`).
   - [x] `corpus/generated/`, `eval/reports/`, `generated/` and `.env` are git-ignored.
@@ -98,8 +98,8 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 - **Spec:** §27 · **Priority:** Must · **Size:** M · **Depends on:** M0-02, M0-03
 - `.github/workflows/ci.yml` with lint/type, unit/property, integration (pg16 service container), `pip-audit`, `gitleaks`. Later epics add their steps.
 - **Acceptance criteria**
-  - [ ] CI runs on every PR and push to `master`, and passes on the skeleton.
-  - [ ] `uv` cache configured; total runtime < 5 min on the skeleton.
+  - [x] CI runs on every PR and push to `master`, and passes on the skeleton.
+  - [x] `uv` cache configured; total runtime < 5 min on the skeleton.
   - [x] Branch protection on `main` documented in README (require CI + one review).
 
 #### M0-07 CLI skeleton
@@ -127,46 +127,46 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 - **Spec:** §7.10 (section 0) · **Priority:** Must · **Size:** S · **Depends on:** M0-03, M0-05
 - Alembic configured against `VC_DATABASE_URL`; migration 0001 creates the `vector` extension, eight schemas and four roles.
 - **Acceptance criteria**
-  - [ ] `vc db migrate` / `make migrate` upgrades a fresh DB; `alembic downgrade base` cleans up.
-  - [ ] Roles `vc_app`, `vc_tool_reader`, `vc_auditor`, `vc_eval` exist as `NOLOGIN`.
-  - [ ] Migrations are idempotent in test (upgrade → downgrade → upgrade).
+  - [x] `vc db migrate` / `make migrate` upgrades a fresh DB; `alembic downgrade base` cleans up.
+  - [x] Roles `vc_app`, `vc_tool_reader`, `vc_auditor`, `vc_eval` exist as `NOLOGIN`.
+  - [x] Migrations are idempotent in test (upgrade → downgrade → upgrade).
 
 #### M1-02 Master data tables (`md`)
 - **Spec:** §7.10 (section 1) · **Priority:** Must · **Size:** S · **Depends on:** M1-01
 - **Acceptance criteria**
-  - [ ] All `md.*` tables, PKs, FKs and CHECK constraints from the DDL exist; S/4HANA counterparts kept as column comments.
-  - [ ] Integration test inserts a valid row per table and asserts each CHECK rejects an invalid one (e.g. `gl_account` type `X` with a P&L category).
+  - [x] All `md.*` tables, PKs, FKs and CHECK constraints from the DDL exist; S/4HANA counterparts kept as column comments.
+  - [x] Integration test inserts a valid row per table and asserts each CHECK rejects an invalid one (e.g. `gl_account` type `X` with a P&L category).
 
 #### M1-03 Transaction and plan tables (`fin`)
 - **Spec:** §7.10 (section 2) · **Priority:** Must · **Size:** S · **Depends on:** M1-02
 - **Acceptance criteria**
-  - [ ] `period_status`, `journal_header`, `journal_line`, `plan_version`, `plan_line`, `stat_key_figure` and all five `jl_*` indexes plus `pl_lookup_idx` exist.
-  - [ ] Debit/credit sign CHECK rejects `S` with negative `amount_lc` and `H` with positive.
+  - [x] `period_status`, `journal_header`, `journal_line`, `plan_version`, `plan_line`, `stat_key_figure` and all five `jl_*` indexes plus `pl_lookup_idx` exist.
+  - [x] Debit/credit sign CHECK rejects `S` with negative `amount_lc` and `H` with positive.
 
 #### M1-04 Semantic views, RLS and grants
 - **Spec:** §7.10 (sections 3–4), §7.11 · **Priority:** Must · **Size:** M · **Depends on:** M1-03
 - `rpt.pnl_actual`, `rpt.pnl_plan` (security_invoker, presentation sign), `rpt.unbalanced_documents`; RLS policies and grants.
 - **Acceptance criteria**
-  - [ ] Views flip sign (`presented = −stored`) — tested with one revenue and one expense line.
-  - [ ] As `vc_tool_reader` with `app.company_scope='ES10'`, only ES10 rows are visible through tables **and** views.
-  - [ ] With the setting missing, zero rows are returned (deny by default).
-  - [ ] `vc_tool_reader` cannot read `audit`, `review`, `truth` or `app`.
+  - [x] Views flip sign (`presented = −stored`) — tested with one revenue and one expense line.
+  - [x] As `vc_tool_reader` with `app.company_scope='ES10'`, only ES10 rows are visible through tables **and** views.
+  - [x] With the setting missing, zero rows are returned (deny by default).
+  - [x] `vc_tool_reader` cannot read `audit`, `review`, `truth` or `app`.
 
 #### M1-05 Documents, app, audit, review and truth tables
 - **Spec:** §7.10 (sections 5–6) · **Priority:** Must · **Size:** M · **Depends on:** M1-01
 - **Acceptance criteria**
-  - [ ] `doc.chunk` has `vector(VC_EMBEDDING_DIM)`, generated `tsv`, HNSW and GIN indexes.
-  - [ ] UPDATE, DELETE and TRUNCATE on `audit.event` and `audit.fact` raise `audit tables are append-only`.
-  - [ ] `review.commentary` rejects `approved_by = created_by`.
-  - [ ] Only `vc_eval` can read `truth`; `PUBLIC` has no access.
+  - [x] `doc.chunk` has `vector(VC_EMBEDDING_DIM)`, generated `tsv`, HNSW and GIN indexes.
+  - [x] UPDATE, DELETE and TRUNCATE on `audit.event` and `audit.fact` raise `audit tables are append-only`.
+  - [x] `review.commentary` rejects `approved_by = created_by`.
+  - [x] Only `vc_eval` can read `truth`; `PUBLIC` has no access.
 
 #### M1-06 Database session layer with RLS context
 - **Spec:** §7.10 (session context), §13.6 · **Priority:** Must · **Size:** M · **Depends on:** M1-04
 - `db/` module: engine, sessions, and a `tool_transaction(company_scope)` context manager that runs `SET LOCAL ROLE vc_tool_reader`, `statement_timeout = 5s` and `set_config('app.company_scope', …, true)`.
 - **Acceptance criteria**
-  - [ ] Scope is transaction-local: a pooled connection reused after commit sees no scope.
-  - [ ] Statement timeout enforced (a `pg_sleep(6)` query fails).
-  - [ ] Scope values are passed as bind parameters, never string-interpolated.
+  - [x] Scope is transaction-local: a pooled connection reused after commit sees no scope.
+  - [x] Statement timeout enforced (a `pg_sleep(6)` query fails).
+  - [x] Scope values are passed as bind parameters, never string-interpolated.
 
 ### Seed data generator
 
