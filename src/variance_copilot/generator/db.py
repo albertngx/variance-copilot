@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from typing import Any
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any, cast
 
+import psycopg
 from sqlalchemy import Connection, text
 
 
@@ -27,3 +28,16 @@ def upsert(
         f"ON CONFLICT ({', '.join(keys)}) {action}"
     )
     conn.execute(text(statement), list(rows))
+
+
+def copy_rows(
+    conn: Connection, table: str, columns: Sequence[str], rows: Iterable[Mapping[str, Any]]
+) -> None:
+    """Bulk insert with COPY inside the connection's transaction."""
+    raw = cast(psycopg.Connection[Any], conn.connection.dbapi_connection)
+    with (
+        raw.cursor() as cursor,
+        cursor.copy(f"COPY {table} ({', '.join(columns)}) FROM STDIN") as copy,
+    ):
+        for row in rows:
+            copy.write_row([row[column] for column in columns])
