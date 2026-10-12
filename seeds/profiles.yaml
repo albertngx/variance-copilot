@@ -1,0 +1,23 @@
+# Data profiles (SPEC §8.12).
+profiles:
+  full:
+    company_codes: [CH10, DE10, ES10, IE10, US10]
+    start: {fiscal_year: 2025, period: 1}
+    end: {fiscal_year: 2026, period: 10}
+    billing: WEEKLY
+    events: [E01, E02, E03, E04a, E04b, E05, E06, E07, E08, E09, E10, E11, E12]
+    journal_lines: [350000, 450000]
+  dev:
+    company_codes: [CH10, DE10, ES10, IE10, US10]
+    start: {fiscal_year: 2025, period: 1}
+    end: {fiscal_year: 2026, period: 10}
+    billing: MONTHLY
+    events: [E01, E02, E03, E04a, E04b, E05, E06, E07, E08, E09, E10, E11, E12]
+    journal_lines: [50000, 70000]
+  ci:
+    company_codes: [CH10, ES10, IE10, US10]
+    start: {fiscal_year: 2026, period: 1}
+    end: {fiscal_year: 2026, period: 9}
+    billing: MONTHLY
+    events: [E01, E02, E05, E06, E07]
+    journal_lines: [10000, 15000]

@@ -1,0 +1,244 @@
+# Scenario FY2025-FY2026 (SPEC §8, Appendix A). Drivers and noise are added with M1-11/M1-12.
+scenario: fy2025_fy2026
+seed: 20261010
+group_currency: USD
+actuals_from: "2025-01-01"
+as_of: "2026-10-09"
+
+fx:  # SPEC §8.6; rates are USD per unit of currency
+  budget:
+    B25: {EUR: "1.0800", CHF: "1.1200"}
+    B26: {EUR: "1.1200", CHF: "1.1800"}
+  random_walk_sigma: {EUR: "0.012", CHF: "0.010"}
+  clip_to_budget: "0.04"
+  closing_noise_sigma: "0.004"
+  override_noise: "0.003"
+  overrides:  # applied when E02 is in the profile
+    CHF:
+      "2026-03": "1.20"
+      "2026-04": "1.23"
+      "2026-05": "1.26"
+      "2026-06": "1.26"
+      "2026-07": "1.26"
+      "2026-08": "1.26"
+      "2026-09": "1.26"
+      "2026-10": "1.26"
+  forecast_rate_months: {F126: "2026-03", F226: "2026-06"}
+
+calendar:  # SPEC §8.2
+  close_working_day: 4
+  close_time: "18:00"
+  special_period_close_month: 2
+  time_zones:
+    CH10: Europe/Zurich
+    DE10: Europe/Berlin
+    ES10: Europe/Madrid
+    IE10: Europe/Dublin
+    US10: America/New_York
+  holidays: ["01-01", "12-25"]
+
+calibration:  # SPEC §8.4, §8.5; FY2025 actuals in USD m
+  tolerance: "0.03"
+  brands:
+    CARDIVEX: {net_sales_musd: 1900, by_market_musd: {US: 1200, EU: 700}}
+    LUMORA: {net_sales_musd: 1500, by_market_musd: {US: 1050, EU: 450}}
+    ONKARIS: {net_sales_musd: 1300, by_market_musd: {US: 800, EU: 500}}
+    NEURELIS: {net_sales_musd: 900, by_market_musd: {US: 500, EU: 400}}
+    RESPIRA: {net_sales_musd: 450, by_market_musd: {US: 250, EU: 200}}
+    IMMUVANT: {net_sales_musd: 250, by_market_musd: {US: 250}}
+  group_net_sales_musd: 6300
+  cost_structure: {COGS: "0.22", SELLING_MARKETING: "0.25", RD: "0.22", GA: "0.05"}
+  fte: {CH10: 1400, US10: 1500, DE10: 450, ES10: 700, IE10: 600}
+  fte_tolerance: "0.05"
+  cost_per_fte_lc: {CH10: 190000, US10: 175000, DE10: 110000, ES10: 65000, IE10: 85000}
+
+events:  # SPEC §8.8; known_by per §8.10
+  - id: E01
+    type: LOSS_OF_EXCLUSIVITY
+    title: CARDIVEX US loss of exclusivity four months earlier than budgeted
+    brand: CARDIVEX
+    company_code: US10
+    actual_loe_date: "2026-05-01"
+    budget_loe_date: "2026-09-01"
+    volume_erosion_vs_baseline:
+      "2026-05": "-0.45"
+      "2026-06": "-0.65"
+      "2026-07": "-0.75"
+      "2026-08": "-0.75"
+      "2026-09": "-0.75"
+      "2026-10": "-0.75"
+    net_price_change: {from: "2026-06-01", change: "-0.12"}
+    known_by: [FC226]
+
+  - id: E02
+    type: FX
+    title: Swiss franc appreciation raises the CH10 cost base in USD
+    company_code: CH10
+    currency: CHF
+    from_period: 3
+    known_by: [FC126, FC226]
+
+  - id: E03
+    type: LAUNCH_OUTPERFORMANCE
+    title: IMMUVANT EU launch ahead of the budget launch curve
+    brand: IMMUVANT
+    launch_period: {DE10: 2, ES10: 3}
+    volume_uplift: "0.30"
+    forecast_signal: {FC126: "0.15", FC226: "0.30"}
+    known_by: [FC126, FC226]
+
+  - id: E04a
+    type: RD_ACCELERATION
+    title: ONKARIS Phase III enrollment ahead of plan
+    company_code: CH10
+    wbs_element: RD-ONK-P3-01
+    cost_center: CH10-RD-ONC
+    gl_account: "61070000"
+    periods: [4, 5, 6, 7]
+    amount_lc: "22000000.00"
+    pulled_forward_lc: "8000000.00"
+    pulled_from_periods: [10, 11, 12]
+    vendor: V100001
+    known_by: [FC226]
+
+  - id: E04b
+    type: CAPITALISED_MILESTONE
+    title: KRB-301 licence milestone capitalised under POL-005
+    company_code: CH10
+    period: 4
+    vendor: V200001
+    asset: KRB-301
+    debit_account: "13000000"
+    credit_account: "20000000"
+    amount_tc: "75000000.00"
+    currency: USD
+    document:
+      type: KR
+      posting_date: "2026-04-22"
+      created_by: lbrunner
+      header_text: "Kairos Bio KRB-301 development milestone (capitalised)"
+    known_by: [FC226]
+
+  - id: E05
+    type: INVENTORY_WRITE_OFF
+    title: RESPIRA batch written off after stability failure
+    company_code: IE10
+    fiscal_year: 2026
+    period: 7
+    gl_account: "50020000"
+    cost_center: IE10-MFG-QA
+    material: RES-200MCG-1
+    amount_lc: "18000000.00"
+    currency: EUR
+    document:
+      type: SA
+      posting_date: "2026-07-29"
+      created_by: ofarrell
+      header_text: "RESPIRA batch 24-0711 stability failure write-off"
+    known_by: []
+
+  - id: E06
+    type: MISPOSTING
+    title: IMMUVANT launch campaign posted to medical affairs, reclassified next month
+    company_code: ES10
+    brand: IMMUVANT
+    vendor: V300001
+    gl_account: "61000000"
+    wrong_cost_center: ES10-RD-MEDAFF
+    right_cost_center: ES10-MKT-IMM
+    amount_lc: "2400000.00"
+    currency: EUR
+    posting_period: 6
+    reclass_period: 7
+    document:
+      type: KR
+      posting_date: "2026-06-19"
+      created_by: INTERFACE_AP
+      header_text: "Lumen Health Communications IMMUVANT launch campaign"
+    reclass_document:
+      type: SA
+      posting_date: "2026-07-15"
+      created_by: jgarcia
+      header_text: "Reclass IMMUVANT launch campaign from ES10-RD-MEDAFF to ES10-MKT-IMM"
+    known_by: []
+
+  - id: E07
+    type: GTN_TRUE_UP
+    title: LUMORA government rebate true-up for P01-P07
+    company_code: US10
+    brand: LUMORA
+    fiscal_year: 2026
+    period: 8
+    gl_account: "40110000"
+    offset_account: "21010000"
+    amount_lc: "40000000.00"
+    currency: USD
+    assignment: TRUEUP-2026P01-P07
+    document:
+      type: ZR
+      posting_date: "2026-08-31"
+      created_by: kpatel
+      header_text: "LUMORA government rebate true-up P01-P07 (updated utilisation data)"
+    known_by: []
+
+  - id: E08
+    type: RESTRUCTURING
+    title: Sales force restructuring provisions in DE10 and US10
+    period: 6
+    gl_account: "70000000"
+    offset_account: "21040000"
+    provisions:
+      - {company_code: DE10, amount_lc: "14000000.00", currency: EUR}
+      - {company_code: US10, amount_lc: "12000000.00", currency: USD}
+    known_by: [FC226]
+
+  - id: E09
+    type: CUT_OFF_ERROR
+    title: March congress costs not accrued, invoiced in April
+    company_code: DE10
+    gl_account: "61010000"
+    cost_center: DE10-MKT-CV
+    vendor: V400002
+    amount_lc: "1500000.00"
+    currency: EUR
+    incurred_period: 3
+    document:
+      type: KR
+      posting_date: "2026-04-08"
+      document_date: "2026-03-18"
+      created_by: INTERFACE_AP
+      header_text: "Forum Medicus cardiology congress March 2026"
+    known_by: []
+
+  - id: E10
+    type: TRANSFER_PRICE_CHANGE
+    title: ES10 transfer prices for IMMUVANT and LUMORA cut by 5% (MEMO-TP26)
+    seller: CH10
+    buyer: ES10
+    brands: [IMMUVANT, LUMORA]
+    change: "-0.05"
+    effective_from: "2026-01-01"
+    known_by: [FC126, FC226]
+
+  - id: E11
+    type: DIVESTMENT
+    title: Gain on divesting the rights to DERMAVEL
+    company_code: CH10
+    fiscal_year: 2025
+    period: 9
+    gl_account: "70030000"
+    divested_brand: DERMAVEL
+    amount_tc: "35000000.00"
+    currency: USD
+    known_by: []
+
+  - id: E12
+    type: DECOYS
+    title: Immaterial variances that must not be reported as drivers
+    count: 25
+    min_abs_usd: 200000
+    max_abs_usd: 800000
+    max_rel: "0.03"
+    stable_brand: NEURELIS
+    stable_tolerance: "0.02"
+    known_by: []

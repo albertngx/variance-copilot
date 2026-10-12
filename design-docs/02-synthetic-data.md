@@ -1,6 +1,6 @@
 # 02 Synthetic data
 
-**Status:** Design · **Spec:** §8 · **Backlog:** M1-07..M1-19 · **Role:** scaffolding
+**Status:** Partial (steps 1-3 built) · **Spec:** §8 · **Backlog:** M1-07..M1-19 · **Role:** scaffolding
 
 ## Why it exists
 
@@ -130,4 +130,33 @@ Generation fails unless all checks pass: documents balance (V-01), no postings i
 
 ## Implementation notes
 
-_Nothing built yet._
+**Pipeline steps 1-3 (M1-07..M1-10): built** on branch `e1-generator-base`.
+
+| Part | Location |
+| --- | --- |
+| Scenario config (FX, calendar, calibration targets, E01-E12 parameters) | [seeds/scenario/fy2025_fy2026.yaml](../seeds/scenario/fy2025_fy2026.yaml), [generator/config.py](../src/variance_copilot/generator/config.py) |
+| Profiles `full`, `dev`, `ci` | [seeds/profiles.yaml](../seeds/profiles.yaml) |
+| Master data, one YAML block per `md` table | [seeds/master/](../seeds/master/), [generator/master.py](../src/variance_copilot/generator/master.py) |
+| Calendar and period close state | [generator/calendar.py](../src/variance_copilot/generator/calendar.py) |
+| FX paths | [generator/fx.py](../src/variance_copilot/generator/fx.py) |
+| Random streams per module | [generator/rng.py](../src/variance_copilot/generator/rng.py) |
+| Steps 1-3 entry point | `pipeline.prepare(profile)`, `pipeline.load_reference_data(conn, run)` |
+
+```mermaid
+flowchart LR
+  Y["seeds/*.yaml"] --> V["Pydantic models<br/>(config.py, master.py)"]
+  V --> M["md.* upsert"]
+  V --> C["md.fiscal_period<br/>fin.period_status"]
+  S["seed"] --> R["module_rng(seed, 'fx')"] --> F["md.fx_rate"]
+  V --> F
+```
+
+Decisions:
+
+- **Random streams are keyed by module name**: `SeedSequence(seed, spawn_key=(hash(name),))`. This is what `spawn` does internally, but it doesn't depend on the order modules are created, so adding a module never shifts another module's stream.
+- **FX draws are fixed-shape**: walk steps, override noise and closing noise for every currency and month are drawn up front. Turning E02 on or off changes only CHF. The FX window always runs from `actuals_from` to `as_of`, so the rates are identical in every profile.
+- **Override noise is uniform** within ±0.3%, so the E02 path is guaranteed to stay within the stated band.
+- **Period status rows exist only for opened periods**: FY2025 P01-P13 closed and FY2026 P01-P09 closed, with P10 open. Unused special periods 14-16 and future periods get no row. Special period 13 closes on working day 4 of February. Working days are weekdays minus 1 January and 25 December.
+- **Master data loads idempotently** with an upsert in FK order. Seeds are checked against the SPEC §7.5-§7.7 tables by parsing SPEC.md, so the two can't drift.
+- **Decoys (E12) are an event entry** (`type: DECOYS`) rather than the top-level `decoys` block of the Appendix A excerpt, so every event has one shape and one ground-truth row.
+- **Not yet in the scenario file**: plan and actual drivers and noise. They arrive with M1-11/M1-12 (PR C).

@@ -174,31 +174,31 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 - **Spec:** §7.3–§7.8, §8.3 step 1 · **Priority:** Must · **Size:** M · **Depends on:** M1-02
 - `seeds/master/*.yaml`: currencies, controlling area, five company codes, segments, functional areas, chart of accounts AUR1, ~45 cost centers, profit centers, six brands, LoE dates, materials, customers, vendors (incl. named scenario vendors), WBS elements.
 - **Acceptance criteria**
-  - [ ] Every account, cost center and brand listed in §7.4–§7.7 is present with the listed attributes.
-  - [ ] Loader is idempotent (re-running yields identical rows).
-  - [ ] All names are fictional; no real company names.
+  - [x] Every account, cost center and brand listed in §7.4–§7.7 is present with the listed attributes.
+  - [x] Loader is idempotent (re-running yields identical rows).
+  - [x] All names are fictional; no real company names.
 
 #### M1-08 Fiscal calendar and period status
 - **Spec:** §8.2, §8.3 step 2 · **Priority:** Must · **Size:** S · **Depends on:** M1-07
 - **Acceptance criteria**
-  - [ ] FY2025 P01–P13 and FY2026 P01–P09 `CLOSED`; FY2026 P10 `OPEN`.
-  - [ ] `closed_at` = working day 4 of the following month, 18:00 local time per company code.
-  - [ ] Special periods 13–16 exist with `is_special = true`.
+  - [x] FY2025 P01–P13 and FY2026 P01–P09 `CLOSED`; FY2026 P10 `OPEN`.
+  - [x] `closed_at` = working day 4 of the following month, 18:00 local time per company code.
+  - [x] Special periods 13–16 exist with `is_special = true`.
 
 #### M1-09 Exchange-rate paths
 - **Spec:** §7.8, §8.6 · **Priority:** Must · **Size:** M · **Depends on:** M1-07, M1-10
 - **Acceptance criteria**
-  - [ ] `B25`, `B26` match §8.6 exactly; `F126` = March 2026 `AVG`, `F226` = June 2026 `AVG`.
-  - [ ] CHF 2026 follows the E02 override within ±0.3%; other `AVG` paths stay within ±4% of budget.
-  - [ ] `CLO(t)` = `AVG(t+1)` × (1 + noise, σ 0.4%).
-  - [ ] Same seed → identical rates.
+  - [x] `B25`, `B26` match §8.6 exactly; `F126` = March 2026 `AVG`, `F226` = June 2026 `AVG`.
+  - [x] CHF 2026 follows the E02 override within ±0.3%; other `AVG` paths stay within ±4% of budget.
+  - [x] `CLO(t)` = `AVG(t+1)` × (1 + noise, σ 0.4%).
+  - [x] Same seed → identical rates.
 
 #### M1-10 Scenario configuration and profiles
 - **Spec:** §8.1, §8.12, Appendix A · **Priority:** Must · **Size:** M · **Depends on:** M0-04
 - `seeds/scenario/fy2025_fy2026.yaml` (drivers, calibration targets, events E01–E12) and `seeds/profiles.yaml` (`full`, `dev`, `ci`); typed Pydantic models; RNG plumbing via `SeedSequence.spawn` per module.
 - **Acceptance criteria**
-  - [ ] Config validates against Pydantic models; invalid config fails with a path to the bad field.
-  - [ ] Each generator module receives its own child RNG; adding a module does not change other modules' streams.
+  - [x] Config validates against Pydantic models; invalid config fails with a path to the bad field.
+  - [x] Each generator module receives its own child RNG; adding a module does not change other modules' streams.
 
 #### M1-11 Plan drivers and budget generation
 - **Spec:** §8.4, §8.5, §8.3 step 4 · **Priority:** Must · **Size:** L · **Depends on:** M1-09, M1-10

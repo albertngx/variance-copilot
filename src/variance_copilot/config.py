@@ -258,7 +258,7 @@ class DevUsers(_ConfigModel):
     users: dict[str, DevUser]
 
 
-def _load_yaml[M: BaseModel](path: Path, model: type[M]) -> M:
+def load_yaml[M: BaseModel](path: Path, model: type[M]) -> M:
     try:
         raw: Any = yaml.safe_load(path.read_text(encoding="utf-8"))
     except OSError as exc:
@@ -272,16 +272,16 @@ def _load_yaml[M: BaseModel](path: Path, model: type[M]) -> M:
 
 
 def load_materiality(config_dir: Path = DEFAULT_CONFIG_DIR) -> MaterialityConfig:
-    return _load_yaml(config_dir / "materiality.yaml", MaterialityConfig)
+    return load_yaml(config_dir / "materiality.yaml", MaterialityConfig)
 
 
 def load_anomalies(config_dir: Path = DEFAULT_CONFIG_DIR) -> AnomalyConfig:
-    return _load_yaml(config_dir / "anomalies.yaml", AnomalyConfig)
+    return load_yaml(config_dir / "anomalies.yaml", AnomalyConfig)
 
 
 def load_model_prices(config_dir: Path = DEFAULT_CONFIG_DIR) -> ModelPrices:
-    return _load_yaml(config_dir / "model_prices.yaml", ModelPrices)
+    return load_yaml(config_dir / "model_prices.yaml", ModelPrices)
 
 
 def load_dev_users(config_dir: Path = DEFAULT_CONFIG_DIR) -> DevUsers:
-    return _load_yaml(config_dir / "dev_users.yaml", DevUsers)
+    return load_yaml(config_dir / "dev_users.yaml", DevUsers)
