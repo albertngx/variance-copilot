@@ -1,0 +1,38 @@
+# Organisational master data (SPEC §7.3, §7.4). All entities are fictional.
+currency:
+  - {currency_code: USD, name: US dollar, decimals: 2}
+  - {currency_code: EUR, name: Euro, decimals: 2}
+  - {currency_code: CHF, name: Swiss franc, decimals: 2}
+
+controlling_area:
+  - {controlling_area: A000, name: Aurelion Pharma Group, currency_code: USD}
+
+company_code:
+  - {company_code: CH10, legal_name: Aurelion Pharma AG, city: Basel, country_code: CH,
+     local_currency: CHF, chart_of_accounts: AUR1, controlling_area: A000, trading_partner: CH10,
+     entity_roles: [PRINCIPAL]}
+  - {company_code: DE10, legal_name: Aurelion Pharma GmbH, city: Munich, country_code: DE,
+     local_currency: EUR, chart_of_accounts: AUR1, controlling_area: A000, trading_partner: DE10,
+     entity_roles: [SALES_AFFILIATE]}
+  - {company_code: ES10, legal_name: Aurelion Farma S.A.U., city: Barcelona, country_code: ES,
+     local_currency: EUR, chart_of_accounts: AUR1, controlling_area: A000, trading_partner: ES10,
+     entity_roles: [SALES_AFFILIATE, SHARED_SERVICES]}
+  - {company_code: IE10, legal_name: Aurelion Manufacturing Ltd, city: Cork, country_code: IE,
+     local_currency: EUR, chart_of_accounts: AUR1, controlling_area: A000, trading_partner: IE10,
+     entity_roles: [MANUFACTURING]}
+  - {company_code: US10, legal_name: Aurelion Pharmaceuticals Inc., city: "East Hanover, NJ",
+     country_code: US, local_currency: USD, chart_of_accounts: AUR1, controlling_area: A000,
+     trading_partner: US10, entity_roles: [SALES_AFFILIATE]}
+
+segment:
+  - {segment: IM, name: Innovative Medicines}
+  - {segment: CORP, name: Corporate}
+
+functional_area:
+  - {functional_area: F010, name: Revenue, pnl_line: REVENUE, sort_order: 10}
+  - {functional_area: F100, name: Cost of goods sold, pnl_line: COGS, sort_order: 20}
+  - {functional_area: F200, name: Selling and marketing, pnl_line: SELLING_MARKETING, sort_order: 30}
+  - {functional_area: F300, name: Research and development, pnl_line: RESEARCH_DEVELOPMENT, sort_order: 40}
+  - {functional_area: F400, name: General and administration, pnl_line: GENERAL_ADMIN, sort_order: 50}
+  - {functional_area: F500, name: Other operating income, pnl_line: OTHER_INCOME, sort_order: 60}
+  - {functional_area: F600, name: Other operating expense, pnl_line: OTHER_EXPENSE, sort_order: 70}
