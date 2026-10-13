@@ -10,6 +10,7 @@ from typing import Annotated, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from variance_copilot.config import load_yaml
+from variance_copilot.generator.assumptions import DriverAssumptions, NoiseAssumptions
 
 DEFAULT_SCENARIO = Path("seeds/scenario/fy2025_fy2026.yaml")
 DEFAULT_PROFILES = Path("seeds/profiles.yaml")
@@ -272,6 +273,8 @@ class ScenarioConfig(_Model):
     calendar: CalendarConfig
     calibration: CalibrationConfig
     events: list[Event]
+    drivers: DriverAssumptions
+    noise: NoiseAssumptions
 
     @model_validator(mode="after")
     def _unique_events(self) -> Self:

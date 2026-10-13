@@ -89,6 +89,7 @@ vendor:
   - [V900001, Celtic Fine Chemicals Ltd, IE, RAW_MATERIALS, null]
   - [V900002, Lindqvist API Chemicals AB, SE, RAW_MATERIALS, null]
   - [V950001, Helix Academic Research Foundation, CH, OTHER, null]
+  - [V960001, Wayfarer Corporate Travel Ltd, GB, OTHER, null]
   - [IC-CH10, Aurelion Pharma AG (intercompany), CH, INTERCOMPANY, CH10]
   - [IC-ES10, Aurelion Farma S.A.U. (intercompany), ES, INTERCOMPANY, ES10]
   - [IC-IE10, Aurelion Manufacturing Ltd (intercompany), IE, INTERCOMPANY, IE10]

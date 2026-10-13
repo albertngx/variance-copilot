@@ -204,33 +204,33 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 - **Spec:** §8.4, §8.5, §8.3 step 4 · **Priority:** Must · **Size:** L · **Depends on:** M1-09, M1-10
 - Revenue model (lifecycle curves, LoE erosion, seasonality, list price, GTN split), transfer prices, standard costs, FTE plan, cost per FTE, marketing/medical budgets, trial curves, asset register.
 - **Acceptance criteria**
-  - [ ] Unit tests for each lifecycle curve, LoE erosion and GTN split.
-  - [ ] `BUD26` assumes CARDIVEX US LoE on 1 September 2026 (as MEMO-BUD26 will state).
-  - [ ] Budget cost structure within ±3 pp of the §8.4 targets (COGS 22%, S&M 25%, R&D 22%, G&A 5%).
+  - [x] Unit tests for each lifecycle curve, LoE erosion and GTN split.
+  - [x] `BUD26` assumes CARDIVEX US LoE on 1 September 2026 (as MEMO-BUD26 will state).
+  - [x] Budget cost structure within ±3 pp of the §8.4 targets (COGS 22%, S&M 25%, R&D 22%, G&A 5%).
 
 #### M1-12 Actual drivers and noise
 - **Spec:** §8.3 step 5, §8.9 · **Priority:** Must · **Size:** M · **Depends on:** M1-11
 - **Acceptance criteria**
-  - [ ] Noise parameters match §8.9 table; noise generated once and frozen per seed.
-  - [ ] Event overlays applied as separate layers so the ground-truth impact of each event can be isolated.
+  - [x] Noise parameters match §8.9 table; noise generated once and frozen per seed.
+  - [x] Event overlays applied as separate layers so the ground-truth impact of each event can be isolated.
 
 #### M1-13 Posting engine
 - **Spec:** §8.7, §7.12 · **Priority:** Must · **Size:** L · **Depends on:** M1-08, M1-12
 - Document types RV, ZR, WE, WA, RI, KR, SA, AF, AL; intercompany chain IE10 → CH10 → affiliates; GBS fees; payroll on the 25th; month-end accruals with auto-reversal; allocations by FTE; depreciation; TC→LC→GC translation; rounding residual to the largest line.
 - **Acceptance criteria**
-  - [ ] Every document balances in LC and GC (I-01).
-  - [ ] No `entry_ts` after the period's `closed_at` (I-02); posting dates inside period (I-03).
-  - [ ] Every accrual has a reversal on day 1 of the next period linked via `reversal_document` (I-04).
-  - [ ] Intercompany revenue = buyer expense per seller/buyer/period within USD 1 (I-05); no IC inventory build (I-07).
-  - [ ] Functional area on each line follows §7.4 derivation (I-08).
-  - [ ] Billing weekly in `full`, monthly in `dev`/`ci`.
+  - [x] Every document balances in LC and GC (I-01).
+  - [x] No `entry_ts` after the period's `closed_at` (I-02); posting dates inside period (I-03).
+  - [x] Every accrual has a reversal on day 1 of the next period linked via `reversal_document` (I-04).
+  - [x] Intercompany revenue = buyer expense per seller/buyer/period within USD 1 (I-05); no IC inventory build (I-07).
+  - [x] Functional area on each line follows §7.4 derivation (I-08).
+  - [x] Billing weekly in `full`, monthly in `dev`/`ci`.
 
 #### M1-14 Plan lines and statistical key figures
 - **Spec:** §8.3 step 8, §7.9 · **Priority:** Must · **Size:** M · **Depends on:** M1-11
 - **Acceptance criteria**
-  - [ ] `fin.plan_version` rows for `BUD25`, `BUD26`, `FC126`, `FC226` per §7.9.
-  - [ ] Plan GC translated at the version's rate type.
-  - [ ] FTE and HEADCOUNT stored in `fin.stat_key_figure` for `ACT` and every plan version.
+  - [x] `fin.plan_version` rows for `BUD25`, `BUD26`, `FC126`, `FC226` per §7.9.
+  - [x] Plan GC translated at the version's rate type.
+  - [ ] FTE and HEADCOUNT stored in `fin.stat_key_figure` for `ACT` and every plan version. (ACT, BUD25, BUD26 done; FC126/FC226 with M1-16)
 
 #### M1-15 Scenario events and ground truth
 - **Spec:** §8.8, Appendix A · **Priority:** Must · **Size:** L · **Depends on:** M1-13, M1-14

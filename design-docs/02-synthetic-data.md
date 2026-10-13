@@ -1,6 +1,6 @@
 # 02 Synthetic data
 
-**Status:** Partial (steps 1-3 built) · **Spec:** §8 · **Backlog:** M1-07..M1-19 · **Role:** scaffolding
+**Status:** Partial (steps 1-5, 7, 8 built) · **Spec:** §8 · **Backlog:** M1-07..M1-19 · **Role:** scaffolding
 
 ## Why it exists
 
@@ -159,4 +159,36 @@ Decisions:
 - **Period status rows exist only for opened periods**: FY2025 P01-P13 closed and FY2026 P01-P09 closed, with P10 open. Unused special periods 14-16 and future periods get no row. Special period 13 closes on working day 4 of February. Working days are weekdays minus 1 January and 25 December.
 - **Master data loads idempotently** with an upsert in FK order. Seeds are checked against the SPEC §7.5-§7.7 tables by parsing SPEC.md, so the two can't drift.
 - **Decoys (E12) are an event entry** (`type: DECOYS`) rather than the top-level `decoys` block of the Appendix A excerpt, so every event has one shape and one ground-truth row.
-- **Not yet in the scenario file**: plan and actual drivers and noise. They arrive with M1-11/M1-12 (PR C).
+
+**Budget, actuals and postings (M1-11..M1-14): built** on branch `e1-ledger`.
+
+| Part | Location |
+| --- | --- |
+| Driver assumptions and noise parameters | `drivers:` and `noise:` in the scenario file, [generator/assumptions.py](../src/variance_copilot/generator/assumptions.py) |
+| Lifecycle, LoE erosion, seasonality | [generator/curves.py](../src/variance_copilot/generator/curves.py) |
+| Budget drivers (volumes, prices, GTN, TP, standard cost, FTE, spend) | [generator/plan.py](../src/variance_copilot/generator/plan.py) |
+| Actual drivers: noise, then event layers | [generator/actual.py](../src/variance_copilot/generator/actual.py) |
+| Proto-documents per posting pattern | [generator/streams.py](../src/variance_copilot/generator/streams.py) |
+| Numbering, translation, rounding, reversal links | [generator/postings.py](../src/variance_copilot/generator/postings.py) |
+| Plan versions, plan lines, FTE/headcount | [generator/plan_lines.py](../src/variance_copilot/generator/plan_lines.py) |
+| In-memory build and DB load | `pipeline.build_ledger(run, layers)`, `pipeline.load_ledger(conn, run, ledger)` |
+
+```mermaid
+flowchart LR
+  A["assumptions"] --> B["budget drivers"]
+  B --> N["x noise"] --> L["event layers<br/>(PR D)"] --> AD["actual drivers"]
+  B --> S1["streams<br/>(plan mode)"] --> PL["fin.plan_line"]
+  AD --> S2["streams<br/>(actual mode)"] --> W["as_of window"] --> C["allocations, GBS"] --> P["posting engine"] --> J["fin.journal_*"]
+```
+
+Decisions:
+
+- **One set of posting rules for plan and actuals.** The same stream functions turn drivers into balanced proto-documents. Plan mode posts monthly by channel and keeps only P&L lines. Actual mode bills by customer, posts invoices with lags, accruals with explicit reversal entries, and quarterly GTN true-ups. Plan and actual therefore always share accounts and dimensions.
+- **Calibration is analytic.** `base_bc` is solved so that the noise-free FY2025 plan equals the §8.4 targets exactly. The FY2025 actuals then differ only by noise, which is what M1-19 checks. IMMUVANT EU has no FY2025 sales, so it is calibrated to a launch-year budget (`launch_budget_lc`).
+- **Opex budgets are top-down.** For each of S&M, R&D and G&A: pool = target share × group net sales − (personnel + depreciation + allocated service costs). The pool is then spread to cost centers, accounts and months by the `spend:` rules. COGS comes from standard cost ratios, freight, royalty, amortisation and IE10 manufacturing staff. Result: COGS 22.0%, S&M 25.0%, R&D 22.0%, G&A 5.0% in BUD25, and COGS 21.8% in BUD26.
+- **The posting window is `as_of`.** Drivers run to the profile end. Documents posted or entered after 9 October 2026 are dropped, so P10 is open and holds only reversals, lagged invoices and weekly billing. Allocations and GBS fees are computed from the documents already in the window, so lagged invoices and reversals land in the right month.
+- **Intercompany flows.** Goods are invoiced in the buyer's currency and GBS fees in EUR. Both sides translate the same transaction amount, so I-05 holds to the cent. Goods are resold in the month they arrive (I-07). IE10 buys raw materials at standard cost and issues them at standard cost, plus production variances.
+- **Profit center on lines without a cost center** is `<CC><TA>` from the material's brand (IE10 → IE10MFG), or set explicitly (amortisation, GBS income).
+- **Noise streams** are keyed by driver family and year (`noise.volume.2026`, ...). Invoice lags are keyed by year and period.
+- **Sizes:** `ci` 12.1k lines (target 10k-15k). `dev` 37k lines against a 50k-70k target, to be tuned with M1-18. `full` is not yet sized.
+- **Deferred:** FY2025 special period 13 audit adjustments (dev) and FTE key figures for FC126/FC226, which come with M1-16 forecasts.

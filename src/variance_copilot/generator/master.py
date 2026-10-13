@@ -237,3 +237,8 @@ def write_master_data(conn: Connection, data: MasterData) -> dict[str, int]:
         upsert(conn, f"md.{table}", rows, keys)
         counts[table] = len(rows)
     return counts
+
+
+def rows_of[R: _Row](data: MasterData, model: type[R]) -> list[R]:
+    table = next(name for name, (table_model, _) in TABLES.items() if table_model is model)
+    return [row for row in data[table] if isinstance(row, model)]

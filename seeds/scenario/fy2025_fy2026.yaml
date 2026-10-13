@@ -1,4 +1,4 @@
-# Scenario FY2025-FY2026 (SPEC §8, Appendix A). Drivers and noise are added with M1-11/M1-12.
+# Scenario FY2025-FY2026 (SPEC §8, Appendix A).
 scenario: fy2025_fy2026
 seed: 20261010
 group_currency: USD
@@ -242,3 +242,219 @@ events:  # SPEC §8.8; known_by per §8.10
     stable_brand: NEURELIS
     stable_tolerance: "0.02"
     known_by: []
+
+drivers:  # SPEC §8.4, §8.5; amounts in local currency unless stated
+  revenue:
+    calibration_year: 2025
+    eu_split: {DE10: "0.55", ES10: "0.45"}
+    seasonality:  # by country, normalised to a mean of 1
+      US: ["0.90", "0.95", "1.00", "1.02", "1.02", "1.03", "1.02", "1.01", "1.02", "1.03", "1.00", "1.00"]
+      DE: ["1.00", "1.00", "1.03", "1.02", "1.02", "1.01", "0.98", "0.85", "1.03", "1.04", "1.02", "1.00"]
+      ES: ["1.00", "1.00", "1.03", "1.02", "1.02", "1.01", "0.98", "0.85", "1.03", "1.04", "1.02", "1.00"]
+    annual_price_change: {US10: "0.04", DE10: "-0.01", ES10: "-0.02"}
+    channel_mix:
+      US10:
+        SMALL_MOLECULE: {WHOLESALER: "0.90", HOSPITAL: "0.10"}
+        BIOLOGIC: {SPECIALTY_PHARMACY: "0.80", HOSPITAL: "0.20"}
+        INHALED: {WHOLESALER: "1.00"}
+      DE10:
+        SMALL_MOLECULE: {WHOLESALER: "0.90", HOSPITAL: "0.10"}
+        BIOLOGIC: {WHOLESALER: "0.50", HOSPITAL: "0.50"}
+        INHALED: {WHOLESALER: "1.00"}
+      ES10:
+        SMALL_MOLECULE: {WHOLESALER: "0.85", HOSPITAL: "0.15"}
+        BIOLOGIC: {HOSPITAL: "0.60", PUBLIC_TENDER: "0.40"}
+        INHALED: {WHOLESALER: "1.00"}
+    channel_gtn_factor: {WHOLESALER: "1.00", SPECIALTY_PHARMACY: "1.10", HOSPITAL: "0.90", PUBLIC_TENDER: "1.25"}
+    gtn_split:  # share of the combined gross-to-net rate by deduction
+      US: {COMMERCIAL: "0.50", GOVERNMENT: "0.38", RETURNS: "0.04", DISCOUNT: "0.08"}
+      EU: {COMMERCIAL: "0.30", GOVERNMENT: "0.50", RETURNS: "0.05", DISCOUNT: "0.15"}
+    affiliate_margin: {US10: "0.30", DE10: "0.32", ES10: "0.32"}
+    manufacturing_markup: "0.08"
+    freight_rate: {US10: "0.010", DE10: "0.015", ES10: "0.013"}
+    royalty: {brand: ONKARIS, rate: "0.08", company_code: CH10, vendor: V200002}
+    brands:
+      CARDIVEX:
+        lifecycle: {stage: MATURE, growth: "0.01"}
+        erosion: {alpha: "0.80", beta: "0.35"}
+        list_price: {US10: 520, DE10: 140, ES10: 110}
+        gtn_rate: {US: "0.45", EU: "0.10"}
+        cogs_ratio: "0.135"
+        amortisation_lc: 0
+        skus:
+          CDX-50MG-30: {share: "0.25", price_factor: "0.6"}
+          CDX-100MG-30: {share: "0.55", price_factor: "1.0"}
+          CDX-100MG-90: {share: "0.20", price_factor: "2.7"}
+      LUMORA:
+        lifecycle: {stage: GROWTH, growth: "0.15"}
+        erosion: {alpha: "0.50", beta: "0.15"}
+        list_price: {US10: 6200, DE10: 1500, ES10: 1300}
+        gtn_rate: {US: "0.50", EU: "0.12"}
+        cogs_ratio: "0.175"
+        amortisation_lc: 60000000
+        skus:
+          LUM-150MG-1PFS: {share: "0.6", price_factor: "1.0"}
+          LUM-300MG-1PFS: {share: "0.4", price_factor: "1.9"}
+      IMMUVANT:
+        lifecycle: {stage: LAUNCH, steepness: "0.35", midpoint_months_after_launch: 2}
+        launch: {US10: "2025-09", DE10: "2026-02", ES10: "2026-03"}
+        launch_budget_lc: {DE10: 40000000, ES10: 30000000}  # first launch year, no FY2025 actuals to calibrate on
+        erosion: {alpha: "0.50", beta: "0.15"}
+        list_price: {US10: 4800, DE10: 1100, ES10: 950}
+        gtn_rate: {US: "0.35", EU: "0.08"}
+        cogs_ratio: "0.185"
+        amortisation_lc: 40000000
+        skus:
+          IMV-200MG-1PFS: {share: "0.7", price_factor: "1.0"}
+          IMV-400MG-1VL: {share: "0.3", price_factor: "1.9"}
+      ONKARIS:
+        lifecycle: {stage: GROWTH, growth: "0.12"}
+        erosion: {alpha: "0.80", beta: "0.30"}
+        list_price: {US10: 9800, DE10: 3200, ES10: 2800}
+        gtn_rate: {US: "0.30", EU: "0.10"}
+        cogs_ratio: "0.115"
+        amortisation_lc: 50000000
+        skus:
+          ONK-40MG-30: {share: "0.5", price_factor: "1.0"}
+          ONK-80MG-30: {share: "0.5", price_factor: "1.8"}
+      NEURELIS:
+        lifecycle: {stage: MATURE, growth: "0.005"}
+        erosion: {alpha: "0.80", beta: "0.35"}
+        list_price: {US10: 680, DE10: 160, ES10: 130}
+        gtn_rate: {US: "0.40", EU: "0.08"}
+        cogs_ratio: "0.135"
+        amortisation_lc: 0
+        skus:
+          NRL-25MG-30: {share: "0.3", price_factor: "0.6"}
+          NRL-50MG-30: {share: "0.5", price_factor: "1.0"}
+          NRL-50MG-90: {share: "0.2", price_factor: "2.7"}
+      RESPIRA:
+        lifecycle: {stage: DECLINE, decline: "0.10"}
+        erosion: {alpha: "0.70", beta: "0.30"}
+        list_price: {US10: 310, DE10: 60, ES10: 52}
+        gtn_rate: {US: "0.55", EU: "0.12"}
+        cogs_ratio: "0.155"
+        amortisation_lc: 10000000
+        skus:
+          RES-200MCG-1: {share: "0.65", price_factor: "1.0"}
+          RES-400MCG-1: {share: "0.35", price_factor: "1.6"}
+
+  personnel:
+    fte:  # January 2025 FTE per cost center (SPEC §8.5 company totals)
+      CH10-RD-ONC: 260
+      CH10-RD-IMM: 220
+      CH10-RD-CV: 90
+      CH10-RD-NS: 80
+      CH10-RD-DISC: 240
+      CH10-MKT-GLB: 90
+      CH10-ADM-HQ: 170
+      CH10-ADM-FIN: 110
+      CH10-SVC-FAC: 60
+      CH10-SVC-IT: 80
+      DE10-SALES-CV: 110
+      DE10-SALES-IMM: 90
+      DE10-SALES-ONC: 70
+      DE10-MKT-CV: 30
+      DE10-MKT-IMM: 35
+      DE10-MED-AFF: 45
+      DE10-ADM-GEN: 50
+      DE10-SVC-FAC: 20
+      ES10-SALES-CV: 90
+      ES10-SALES-IMM: 80
+      ES10-MKT-CV: 25
+      ES10-MKT-IMM: 30
+      ES10-RD-MEDAFF: 35
+      ES10-ADM-GEN: 40
+      ES10-GBS-FIN: 180
+      ES10-GBS-HR: 80
+      ES10-GBS-IT: 140
+      IE10-MFG-PKG: 180
+      IE10-MFG-API: 200
+      IE10-MFG-QA: 90
+      IE10-MFG-LOG: 60
+      IE10-ADM-SITE: 45
+      IE10-SVC-FAC: 25
+      US10-SALES-CV: 300
+      US10-SALES-IMM: 260
+      US10-SALES-ONC: 180
+      US10-SALES-NS: 120
+      US10-SALES-RES: 80
+      US10-MKT-CV: 70
+      US10-MKT-IMM: 80
+      US10-MKT-ONC: 50
+      US10-MED-AFF: 120
+      US10-ADM-FIN: 130
+      US10-SVC-IT: 60
+      US10-SVC-FAC: 50
+    annual_growth: {CH10: "0.02", DE10: "0.02", ES10: "0.04", IE10: "0.01", US10: "0.03"}
+    social_rate: {CH10: "0.18", DE10: "0.21", ES10: "0.25", IE10: "0.19", US10: "0.22"}
+    bonus_rate: {CH10: "0.15", DE10: "0.12", ES10: "0.10", IE10: "0.10", US10: "0.15"}
+    fte_per_head: "0.95"
+    payroll_day: 25
+
+  spend:
+    service_costs:  # annual cost per FTE of the company, allocated by FTE (SPEC §8.5)
+      - {cost_center: CH10-SVC-FAC, gl_account: "61050000", per_fte: 22000}
+      - {cost_center: CH10-SVC-IT, gl_account: "61030000", per_fte: 15000}
+      - {cost_center: DE10-SVC-FAC, gl_account: "61050000", per_fte: 12000}
+      - {cost_center: IE10-SVC-FAC, gl_account: "61050000", per_fte: 10000}
+      - {cost_center: US10-SVC-FAC, gl_account: "61050000", per_fte: 18000}
+      - {cost_center: US10-SVC-IT, gl_account: "61030000", per_fte: 14000}
+    depreciation_per_fte:  # straight-line asset register by cost center category
+      PRODUCTION: 30000
+      QUALITY: 15000
+      RESEARCH: 12000
+      DEVELOPMENT: 4000
+      SERVICE: 6000
+      DEFAULT: 2000
+    selling_marketing:
+      global_share: "0.08"
+      category_weight: {MARKETING: "0.7", SALES: "0.3"}
+      accounts:
+        MARKETING: {"61000000": "0.6", "61010000": "0.4"}
+        SALES: {"61040000": "0.7", "61020000": "0.3"}
+    research_development:
+      trials: "0.60"
+      collaborations: "0.12"
+      medical: "0.10"
+      other: "0.18"
+      medical_accounts: {"61010000": "0.5", "61020000": "0.5"}
+      other_accounts: {"61020000": "0.5", "61030000": "0.2", "61040000": "0.3"}
+      collaboration_wbs: RD-DISC-COLLAB-01
+      collaboration_cost_center: CH10-RD-DISC
+    general_admin:
+      accounts: {"61020000": "0.45", "61030000": "0.25", "61040000": "0.10", "61050000": "0.20"}
+    congress_months: [3, 6, 9]
+    congress_weight: "2.5"
+    trial_phases:  # share of duration, share of cost
+      - {name: START_UP, duration: "0.10", cost: "0.05"}
+      - {name: ENROLLMENT, duration: "0.35", cost: "0.40"}
+      - {name: TREATMENT, duration: "0.40", cost: "0.45"}
+      - {name: CLOSE_OUT, duration: "0.15", cost: "0.10"}
+    trials:
+      RD-ONK-P3-01: {start: "2024-07", months: 42, weight: "0.30", vendor: V100001}
+      RD-LUM-P3-02: {start: "2025-03", months: 36, weight: "0.25", vendor: V100001}
+      RD-IMV-P2-01: {start: "2025-06", months: 24, weight: "0.12", vendor: V100002}
+      RD-CDX-LCM-01: {start: "2024-01", months: 30, weight: "0.08", vendor: V100002}
+      RD-NRL-P4-01: {start: "2023-10", months: 48, weight: "0.05", vendor: V100002}
+      RD-KRB-301-01: {start: "2026-05", months: 30, weight: "0.10", vendor: V100001}
+    vendors:  # by account, per company where it differs
+      "61000000": {default: V300002, DE10: V300003, ES10: V300001}
+      "61010000": {default: V400002, US10: V400003, ES10: V400001}
+      "61020000": {default: V500001}
+      "61030000": {default: V600001}
+      "61040000": {default: V960001}
+      "61050000": {default: V700001, IE10: V700002, US10: V700003}
+      "61080000": {default: V950001}
+      "50050000": {default: V800001}
+      "12000000": {default: V900001}
+
+noise:  # SPEC §8.9
+  volume_sigma: {LAUNCH: "0.06", GROWTH: "0.045", MATURE: "0.03", DECLINE: "0.03"}
+  net_price_sigma: "0.005"
+  gtn_rate_pp: "0.005"
+  spend_sigma: {"61000000": "0.10", "61010000": "0.10", "61020000": "0.08", "61030000": "0.05",
+                "61040000": "0.08", "61050000": "0.05", "61070000": "0.07", "61080000": "0.05"}
+  invoice_lag_days: [0, 20]
+  fte_sigma: "0.015"
+  production_variance: "0.03"
