@@ -97,6 +97,7 @@ class Entry:
     header_text: str | None = None
     accrual_key: str | None = None
     reverses: str | None = None
+    event_id: str | None = None
 
     @property
     def fiscal_year(self) -> int:

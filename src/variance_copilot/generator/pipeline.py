@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from sqlalchemy import Connection, text
 
-from variance_copilot.generator import calendar, fx, master
-from variance_copilot.generator.actual import Layer, actual_drivers
+from variance_copilot.generator import calendar, events, fx, master
+from variance_copilot.generator.actual import actual_drivers
 from variance_copilot.generator.config import (
     DEFAULT_PROFILES,
     DEFAULT_SCENARIO,
@@ -32,12 +32,12 @@ from variance_copilot.generator.postings import (
 from variance_copilot.generator.rng import module_rng
 from variance_copilot.generator.streams import LedgerContext, base_entries, close_entries
 
-FX_EVENT = "E02"
 LEDGER_TABLES = ("fin.journal_line", "fin.journal_header", "fin.plan_line", "fin.stat_key_figure")
 
 
 @dataclass(frozen=True)
 class Run:
+    name: str
     scenario: ScenarioConfig
     profile: Profile
     seed: int
@@ -49,6 +49,7 @@ class Ledger:
 
     master: master.MasterData
     fx_rates: list[fx.FxRate]
+    events: list[str] = field(default_factory=list)
     budgets: list[Drivers] = field(default_factory=list)
     actuals: list[Drivers] = field(default_factory=list)
     plan_entries: dict[str, list[Entry]] = field(default_factory=dict)
@@ -66,16 +67,19 @@ def prepare(
     profiles = load_profiles(profiles_path).profiles
     if profile_name not in profiles:
         raise ValueError(f"unknown profile {profile_name!r}; choose from {sorted(profiles)}")
-    return Run(scenario, profiles[profile_name], scenario.seed if seed is None else seed)
+    return Run(
+        profile_name, scenario, profiles[profile_name], scenario.seed if seed is None else seed
+    )
 
 
-def generate_fx(run: Run) -> list[fx.FxRate]:
+def generate_fx(run: Run, active: Sequence[str] | None = None) -> list[fx.FxRate]:
+    active = events.active_events(run.scenario, run.profile.events) if active is None else active
     return fx.generate_fx_rates(
         run.scenario.fx,
         module_rng(run.seed, "fx"),
         run.scenario.actuals_from,
         run.scenario.as_of,
-        apply_overrides=FX_EVENT in run.profile.events,
+        apply_overrides=events.FX_EVENT in active,
     )
 
 
@@ -88,16 +92,18 @@ def actual_periods(run: Run, year: int) -> list[int]:
 
 
 def build_ledger(
-    run: Run, layers: Sequence[Layer] = (), master_dir: Path = master.DEFAULT_SEEDS_DIR
+    run: Run, exclude: Iterable[str] = (), master_dir: Path = master.DEFAULT_SEEDS_DIR
 ) -> Ledger:
-    """Steps 4, 5, 7 and 8 in memory: budgets, actual drivers, entries and postings."""
+    """Steps 4, 5, 7, 8 and 9 in memory; ``exclude`` drops events for counterfactuals."""
     data = master.read_master_data(master_dir)
-    ledger = Ledger(data, generate_fx(run))
+    active = events.active_events(run.scenario, run.profile.events, exclude)
+    ledger = Ledger(data, generate_fx(run, active), active)
     lookups, rates = Master(data), Rates(ledger.fx_rates)
     companies = run.profile.company_codes
     plan_ctx = PlanContext(run.scenario, lookups, rates, companies)
     ctx = LedgerContext(run.scenario, lookups, rates, companies, run.profile.billing, run.seed)
     as_of = run.scenario.as_of
+    layers = events.layers(run.scenario, plan_ctx, active)
 
     for year in run.profile.fiscal_years:
         budget = budget_drivers(plan_ctx, year)
@@ -109,7 +115,9 @@ def build_ledger(
             actual_drivers(budget, run.scenario.noise, lookups, run.seed, periods, layers)
         )
 
-    base = [e for d in ledger.actuals for e in base_entries(ctx, d) if in_window(e, as_of)]
+    base = [e for d in ledger.actuals for e in base_entries(ctx, d)]
+    base += events.entries(ctx, ledger.actuals, active)
+    base = [e for e in base if in_window(e, as_of)]
     close = [e for d in ledger.actuals for e in close_entries(ctx, d, base) if in_window(e, as_of)]
     ledger.actual_entries = base + close
     ledger.journal = post(ledger.actual_entries, lookups, rates)
@@ -144,7 +152,7 @@ def load_reference_data(
 def load_ledger(conn: Connection, run: Run, ledger: Ledger) -> dict[str, int]:
     """Replace the fin data with the generated ledger, plans and key figures."""
     lookups, rates = Master(ledger.master), Rates(ledger.fx_rates)
-    conn.execute(text(f"TRUNCATE {', '.join(LEDGER_TABLES)}"))
+    conn.execute(text(f"TRUNCATE {', '.join(LEDGER_TABLES)} RESTART IDENTITY"))
     upsert(conn, "fin.plan_version", plan_versions(run.profile.fiscal_years), ("plan_category",))
     copy_rows(conn, "fin.journal_header", HEADER_COLUMNS, ledger.journal.headers)
     copy_rows(conn, "fin.journal_line", LINE_COLUMNS, ledger.journal.lines)

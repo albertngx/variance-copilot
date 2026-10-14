@@ -72,6 +72,12 @@ jobs:
           enable-cache: true
       - run: uv sync
       - run: uv run pytest -m "not unit and not property"
+      - name: Generate the ci profile and run V-01..V-10
+        env:
+          VC_DATABASE_URL: postgresql+psycopg://vc_test:vc_test@localhost:5432/vc_test
+        run: |
+          uv run vc db migrate
+          uv run vc seed --profile ci --seed 20261010
 
   security:
     name: Dependency audit and secret scan

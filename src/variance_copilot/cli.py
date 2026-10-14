@@ -7,11 +7,16 @@ name the milestone that implements them.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, NoReturn
+from typing import TYPE_CHECKING, Annotated, NoReturn
 
 import typer
 
 from variance_copilot import __version__
+
+if TYPE_CHECKING:
+    from sqlalchemy import Engine
+
+    from variance_copilot.generator.validate import CheckResult
 
 app = typer.Typer(
     name="vc",
@@ -72,6 +77,27 @@ seed_app = typer.Typer(help="Generate and load synthetic data.")
 app.add_typer(seed_app, name="seed")
 
 
+def _engine() -> Engine:
+    from variance_copilot.config import ConfigError
+    from variance_copilot.db import make_engine
+    from variance_copilot.db.engine import database_url
+
+    try:
+        return make_engine(database_url())
+    except ConfigError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+
+def _print_checks(results: list[CheckResult]) -> None:
+    for result in results:
+        typer.echo(f"  {result.check_id} {result.status:<4} {result.description}")
+        if result.status == "FAIL":
+            typer.echo(f"       {result.detail}")
+            for sample in result.samples:
+                typer.echo(f"       {sample}")
+
+
 @seed_app.callback(invoke_without_command=True)
 def seed(
     ctx: typer.Context,
@@ -79,14 +105,44 @@ def seed(
     seed_value: Annotated[int, typer.Option("--seed", help="Random seed.")] = 20261010,
 ) -> None:
     """Generate and load data; writes manifest and ground truth."""
-    if ctx.invoked_subcommand is None:
-        _not_implemented("M1")
+    if ctx.invoked_subcommand is not None:
+        return
+    import time
+
+    from variance_copilot.generator.pipeline import prepare
+    from variance_copilot.generator.seed import SeedValidationError, run_seed
+
+    started = time.monotonic()
+    run = prepare(profile, seed_value)
+    try:
+        with _engine().begin() as conn:
+            result = run_seed(conn, run)
+    except SeedValidationError as exc:
+        typer.echo("generation failed validation; nothing was committed", err=True)
+        _print_checks(exc.results)
+        raise typer.Exit(code=1) from exc
+    lines = result.counts["journal_line"]
+    typer.echo(f"profile {profile}, seed {seed_value}: {lines} journal lines")
+    typer.echo(f"events: {', '.join(result.manifest['events']) or 'none'}")
+    if result.manifest["events_pending"]:
+        typer.echo(f"not yet implemented: {', '.join(result.manifest['events_pending'])}")
+    _print_checks(result.checks)
+    elapsed = time.monotonic() - started
+    typer.echo(f"wrote generated/manifest.json and generated/ground_truth.json ({elapsed:.1f} s)")
 
 
 @seed_app.command("verify")
 def seed_verify() -> None:
     """Re-run validation checks V-01 to V-10."""
-    _not_implemented("M1")
+    from variance_copilot.generator.seed import verify
+    from variance_copilot.generator.validate import failures
+
+    with _engine().begin() as conn:
+        results = verify(conn)
+        conn.rollback()
+    _print_checks(results)
+    if failures(results):
+        raise typer.Exit(code=1)
 
 
 # --- corpus and ingestion ------------------------------------------------

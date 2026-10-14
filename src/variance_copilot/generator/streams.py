@@ -5,7 +5,7 @@ from __future__ import annotations
 import calendar as month_calendar
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -126,7 +126,7 @@ def _offset(
 
 
 @dataclass(frozen=True)
-class _Item:
+class SalesItem:
     customer: str | None
     channel: str
     material: str
@@ -150,7 +150,9 @@ class _Item:
         )
 
 
-def _items(ctx: LedgerContext, drivers: Drivers, company_code: str, period: int) -> list[_Item]:
+def sales_items(
+    ctx: LedgerContext, drivers: Drivers, company_code: str, period: int
+) -> list[SalesItem]:
     """Sales by customer (actuals) or by channel (plan) for one month."""
     items = []
     for (c, material, channel, p), s in drivers.sales.items():
@@ -158,7 +160,7 @@ def _items(ctx: LedgerContext, drivers: Drivers, company_code: str, period: int)
             continue
         if not drivers.is_actual:
             items.append(
-                _Item(None, channel, material, s.quantity, s.list_price, s.gtn, s.gtn_actual)
+                SalesItem(None, channel, material, s.quantity, s.list_price, s.gtn, s.gtn_actual)
             )
             continue
         customers = ctx.master.customers_of(company_code, channel)
@@ -166,7 +168,7 @@ def _items(ctx: LedgerContext, drivers: Drivers, company_code: str, period: int)
         for customer, weight in zip(customers, weights, strict=True):
             quantity = s.quantity * weight / sum(weights)
             items.append(
-                _Item(
+                SalesItem(
                     customer.customer,
                     channel,
                     material,
@@ -190,14 +192,14 @@ def sales_entries(
     ctx: LedgerContext, drivers: Drivers, company_code: str, period: int
 ) -> list[Entry]:
     year = drivers.fiscal_year
-    items = _items(ctx, drivers, company_code, period)
+    items = sales_items(ctx, drivers, company_code, period)
     if not items:
         return []
     month_end = ctx.working_days(year, period)[-1]
     rates = "gtn_actual" if drivers.is_actual else "gtn"
     entries = []
 
-    by_customer: dict[str | None, list[_Item]] = defaultdict(list)
+    by_customer: dict[str | None, list[SalesItem]] = defaultdict(list)
     for item in items:
         by_customer[item.customer].append(item)
     dates = _billing_dates(ctx, drivers, year, period)
@@ -258,7 +260,7 @@ def _gtn_true_up(
     """Quarterly true-up of the accrued rate to the estimated actual rate."""
     lines = []
     for p in (period - 2, period - 1, period):
-        for item in _items(ctx, drivers, company_code, p):
+        for item in sales_items(ctx, drivers, company_code, p):
             for component, account in GTN_ACCOUNTS.items():
                 delta = item.gross * (item.gtn_actual[component] - item.gtn[component])
                 lines.append(item.line(account, delta))
@@ -545,6 +547,19 @@ def _vendor(ctx: LedgerContext, cost_center: str, gl_account: str, wbs: str | No
     return spend.vendor(gl_account, ctx.master.cost_centers[cost_center].company_code)
 
 
+def _invoice_currency(
+    ctx: LedgerContext, company_code: str, year: int, line: Line
+) -> tuple[str, Line]:
+    """Vendors with foreign-currency contracts bill the budgeted amount at the budget rate."""
+    local = ctx.master.currency(company_code)
+    currency = ctx.scenario.drivers.spend.invoice_currency.get(line.vendor or "", local)
+    if currency == local:
+        return local, line
+    rate_type, valid = f"B{year % 100:02d}", date(year, 1, 1)
+    rate = ctx.rates.to_usd(rate_type, local, valid) / ctx.rates.to_usd(rate_type, currency, valid)
+    return currency, replace(line, amount=line.amount * rate)
+
+
 def spend_entries(ctx: LedgerContext, drivers: Drivers, period: int) -> list[Entry]:
     """Vendor invoices; services not invoiced by month end are accrued and reversed (SPEC §8.7)."""
     year = drivers.fiscal_year
@@ -575,12 +590,20 @@ def spend_entries(ctx: LedgerContext, drivers: Drivers, period: int) -> list[Ent
     lag = module_rng(ctx.seed, f"postings.invoice_lag.{year}.{period}")
     low, high = ctx.scenario.noise.invoice_lag_days
     days_in_month = month_calendar.monthrange(year, period)[1]
+    invoices = ctx.scenario.drivers.spend.invoices_per_month
     for company_code, lines in by_company.items():
         accrued = []
-        for line in lines:
+        parts = [
+            replace(line, amount=line.amount / count)
+            for line in lines
+            for count in [invoices.get(line.gl_account, 1)]
+            for _ in range(count)
+        ]
+        for line in parts:
             service = date(year, period, int(lag.integers(1, days_in_month + 1)))
             invoice = service + timedelta(days=int(lag.integers(low, high + 1)))
-            invoice_lines = [line, _offset(AP, [line], vendor=line.vendor)]
+            currency, billed = _invoice_currency(ctx, company_code, year, line)
+            invoice_lines = [billed, _offset(AP, [billed], vendor=line.vendor)]
             entries.append(
                 _entry(
                     ctx,
@@ -589,6 +612,7 @@ def spend_entries(ctx: LedgerContext, drivers: Drivers, period: int) -> list[Ent
                     invoice,
                     invoice_lines,
                     "INTERFACE_AP",
+                    currency=currency,
                     document_date=service,
                 )
             )
