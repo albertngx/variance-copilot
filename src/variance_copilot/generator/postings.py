@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Any
@@ -40,6 +40,7 @@ Row = dict[str, Any]
 class Journal:
     headers: list[Row]
     lines: list[Row]
+    event_documents: dict[str, list[str]] = field(default_factory=dict)
 
 
 def cents(value: float | Decimal) -> Decimal:
@@ -115,6 +116,9 @@ def post(entries: Iterable[Entry], master: Master, rates: Rates) -> Journal:
             header["reversal_fiscal_year"] = original["fiscal_year"]
             original["reversal_document"] = number
             original["reversal_fiscal_year"] = year
+        if entry.event_id:
+            reference = f"{entry.company_code}/{year}/{number}"
+            journal.event_documents.setdefault(entry.event_id, []).append(reference)
         journal.headers.append(header)
         journal.lines += _lines(entry, number, master, rates)
     return journal

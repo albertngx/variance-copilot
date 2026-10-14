@@ -157,6 +157,16 @@ class Trial(_Model):
     vendor: str
 
 
+class Campaign(_Model):
+    """A budgeted one-off spend on top of the phased pools."""
+
+    cost_center: str
+    gl_account: str
+    fiscal_year: int
+    period: Annotated[int, Field(ge=1, le=12)]
+    amount_lc: Positive
+
+
 class SpendAssumptions(_Model):
     service_costs: list[ServiceCost]
     depreciation_per_fte: dict[str, NonNegative]
@@ -168,6 +178,9 @@ class SpendAssumptions(_Model):
     trial_phases: list[TrialPhase]
     trials: dict[str, Trial]
     vendors: dict[str, dict[str, str]]
+    invoice_currency: dict[str, Literal["USD", "EUR", "CHF"]] = {}
+    campaigns: list[Campaign] = []
+    invoices_per_month: dict[str, Annotated[int, Field(ge=1)]] = {}
 
     def vendor(self, gl_account: str, company_code: str) -> str:
         by_company = self.vendors[gl_account]

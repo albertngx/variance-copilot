@@ -236,12 +236,12 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 - **Spec:** §8.8, Appendix A · **Priority:** Must · **Size:** L · **Depends on:** M1-13, M1-14
 - Implement E01–E12 (the `ci` profile needs E01, E02, E05, E06, E07 first); record documents and exact impact per plan version, per period and YTD in `truth.scenario_event`.
 - **Acceptance criteria**
-  - [ ] Each event's impact lands within its §8.8 target range.
+  - [ ] Each event's impact lands within its §8.8 target range. (`ci` events E01, E02, E05, E06, E07 done)
   - [ ] E04b milestone is capitalised (13000000 / 20000000, TC USD) with zero P&L impact.
-  - [ ] E06 nets to zero YTD; E10 nets to zero at group level.
-  - [ ] E07 lines carry assignment `TRUEUP-2026P01-P07`.
+  - [ ] E06 nets to zero YTD; E10 nets to zero at group level. (E06 done)
+  - [x] E07 lines carry assignment `TRUEUP-2026P01-P07`.
   - [ ] E12: 25 decoys below materiality; NEURELIS within ±2% of budget.
-  - [ ] `truth.scenario_event.documents` references real documents.
+  - [x] `truth.scenario_event.documents` references real documents.
 
 #### M1-16 Forecast generation
 - **Spec:** §8.10 · **Priority:** Must · **Size:** M · **Depends on:** M1-15
@@ -254,16 +254,16 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 #### M1-17 Generated-data validation suite
 - **Spec:** §8.13 · **Priority:** Must · **Size:** M · **Depends on:** M1-15, M1-16
 - **Acceptance criteria**
-  - [ ] V-01..V-10 implemented as SQL/Python checks; generation aborts on any failure with the check ID and sample offending rows.
-  - [ ] `vc seed verify` re-runs all checks against the current database.
-  - [ ] V-10 regenerates and compares manifest checksums.
+  - [x] V-01..V-10 implemented as SQL/Python checks; generation aborts on any failure with the check ID and sample offending rows.
+  - [x] `vc seed verify` re-runs all checks against the current database.
+  - [x] V-10 regenerates and compares manifest checksums.
 
 #### M1-18 Export, manifest and CLI
 - **Spec:** §8.11, §17 · **Priority:** Must · **Size:** S · **Depends on:** M1-17
 - **Acceptance criteria**
-  - [ ] `vc seed --profile ci --seed 20261010` loads data and writes `generated/manifest.json` (seed, profile, generator version, git commit, row counts, SHA-256 per table) and `generated/ground_truth.json`.
-  - [ ] `ci` profile: 10k–15k journal lines, < 60 s; `dev` profile: 50k–70k lines.
-  - [ ] Generator `ci` profile + V-01..V-10 runs in CI.
+  - [x] `vc seed --profile ci --seed 20261010` loads data and writes `generated/manifest.json` (seed, profile, generator version, git commit, row counts, SHA-256 per table) and `generated/ground_truth.json`.
+  - [x] `ci` profile: 10k–15k journal lines, < 60 s; `dev` profile: 50k–70k lines.
+  - [x] Generator `ci` profile + V-01..V-10 runs in CI.
 
 #### M1-19 Calibration to FY2025 targets
 - **Spec:** §8.4 calibration table · **Priority:** Must · **Size:** M · **Depends on:** M1-15

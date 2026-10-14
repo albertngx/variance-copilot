@@ -92,9 +92,21 @@ class EventDocument(_Model):
     header_text: str
 
 
+class ImpactTarget(_Model):
+    """Target impact in presentation sign over the given periods (SPEC §8.8)."""
+
+    currency: Currency
+    periods: list[Period]
+    low: Decimal
+    high: Decimal
+
+
 class _Event(_Model):
     id: EventId
     title: str
+    classification: str
+    recurrence: Literal["RECURRING", "NON_RECURRING", "TIMING"]
+    target: ImpactTarget | None = None
     known_by: list[PlanCategory] = []
 
 

@@ -475,6 +475,10 @@ def spend_plan(
     _selling_marketing(budget, pools["F200"], net, net_usd)
     _research_development(budget, pools["F300"], fte, net_usd)
     _general_admin(budget, pools["F400"], fte)
+    for campaign in ctx.scenario.drivers.spend.campaigns:
+        if campaign.fiscal_year == year and (campaign.cost_center, 1) in fte:
+            key = (campaign.cost_center, campaign.gl_account, campaign.period, None)
+            budget.add(key, float(campaign.amount_lc))
     return budget.spend
 
 

@@ -52,10 +52,13 @@ calibration:  # SPEC §8.4, §8.5; FY2025 actuals in USD m
   fte_tolerance: "0.05"
   cost_per_fte_lc: {CH10: 190000, US10: 175000, DE10: 110000, ES10: 65000, IE10: 85000}
 
-events:  # SPEC §8.8; known_by per §8.10
+events:  # SPEC §8.8; known_by per §8.10; target in presentation sign (E06: the R&D side in P06)
   - id: E01
     type: LOSS_OF_EXCLUSIVITY
     title: CARDIVEX US loss of exclusivity four months earlier than budgeted
+    classification: LOSS_OF_EXCLUSIVITY
+    recurrence: RECURRING
+    target: {currency: USD, periods: [5, 6, 7, 8, 9], low: -350000000, high: -300000000}
     brand: CARDIVEX
     company_code: US10
     actual_loe_date: "2026-05-01"
@@ -73,6 +76,9 @@ events:  # SPEC §8.8; known_by per §8.10
   - id: E02
     type: FX
     title: Swiss franc appreciation raises the CH10 cost base in USD
+    classification: FX
+    recurrence: RECURRING
+    target: {currency: USD, periods: [1, 2, 3, 4, 5, 6, 7, 8, 9], low: -40000000, high: -30000000}
     company_code: CH10
     currency: CHF
     from_period: 3
@@ -81,6 +87,8 @@ events:  # SPEC §8.8; known_by per §8.10
   - id: E03
     type: LAUNCH_OUTPERFORMANCE
     title: IMMUVANT EU launch ahead of the budget launch curve
+    classification: LAUNCH_OUTPERFORMANCE
+    recurrence: RECURRING
     brand: IMMUVANT
     launch_period: {DE10: 2, ES10: 3}
     volume_uplift: "0.30"
@@ -90,6 +98,8 @@ events:  # SPEC §8.8; known_by per §8.10
   - id: E04a
     type: RD_ACCELERATION
     title: ONKARIS Phase III enrollment ahead of plan
+    classification: RD_ACCELERATION
+    recurrence: NON_RECURRING
     company_code: CH10
     wbs_element: RD-ONK-P3-01
     cost_center: CH10-RD-ONC
@@ -104,6 +114,8 @@ events:  # SPEC §8.8; known_by per §8.10
   - id: E04b
     type: CAPITALISED_MILESTONE
     title: KRB-301 licence milestone capitalised under POL-005
+    classification: CAPITALISED_MILESTONE
+    recurrence: NON_RECURRING
     company_code: CH10
     period: 4
     vendor: V200001
@@ -122,6 +134,9 @@ events:  # SPEC §8.8; known_by per §8.10
   - id: E05
     type: INVENTORY_WRITE_OFF
     title: RESPIRA batch written off after stability failure
+    classification: INVENTORY_WRITE_OFF
+    recurrence: NON_RECURRING
+    target: {currency: EUR, periods: [7], low: -18000000, high: -18000000}
     company_code: IE10
     fiscal_year: 2026
     period: 7
@@ -140,6 +155,9 @@ events:  # SPEC §8.8; known_by per §8.10
   - id: E06
     type: MISPOSTING
     title: IMMUVANT launch campaign posted to medical affairs, reclassified next month
+    classification: MISPOSTING
+    recurrence: TIMING
+    target: {currency: EUR, periods: [6], low: -2400000, high: -2400000}
     company_code: ES10
     brand: IMMUVANT
     vendor: V300001
@@ -165,6 +183,9 @@ events:  # SPEC §8.8; known_by per §8.10
   - id: E07
     type: GTN_TRUE_UP
     title: LUMORA government rebate true-up for P01-P07
+    classification: PRIOR_PERIOD_GTN_TRUE_UP
+    recurrence: NON_RECURRING
+    target: {currency: USD, periods: [8], low: -40000000, high: -40000000}
     company_code: US10
     brand: LUMORA
     fiscal_year: 2026
@@ -184,6 +205,8 @@ events:  # SPEC §8.8; known_by per §8.10
   - id: E08
     type: RESTRUCTURING
     title: Sales force restructuring provisions in DE10 and US10
+    classification: RESTRUCTURING
+    recurrence: NON_RECURRING
     period: 6
     gl_account: "70000000"
     offset_account: "21040000"
@@ -195,6 +218,8 @@ events:  # SPEC §8.8; known_by per §8.10
   - id: E09
     type: CUT_OFF_ERROR
     title: March congress costs not accrued, invoiced in April
+    classification: CUT_OFF_ERROR
+    recurrence: TIMING
     company_code: DE10
     gl_account: "61010000"
     cost_center: DE10-MKT-CV
@@ -213,6 +238,8 @@ events:  # SPEC §8.8; known_by per §8.10
   - id: E10
     type: TRANSFER_PRICE_CHANGE
     title: ES10 transfer prices for IMMUVANT and LUMORA cut by 5% (MEMO-TP26)
+    classification: TRANSFER_PRICE_CHANGE
+    recurrence: RECURRING
     seller: CH10
     buyer: ES10
     brands: [IMMUVANT, LUMORA]
@@ -223,6 +250,8 @@ events:  # SPEC §8.8; known_by per §8.10
   - id: E11
     type: DIVESTMENT
     title: Gain on divesting the rights to DERMAVEL
+    classification: DIVESTMENT_GAIN
+    recurrence: NON_RECURRING
     company_code: CH10
     fiscal_year: 2025
     period: 9
@@ -235,6 +264,8 @@ events:  # SPEC §8.8; known_by per §8.10
   - id: E12
     type: DECOYS
     title: Immaterial variances that must not be reported as drivers
+    classification: IMMATERIAL
+    recurrence: RECURRING
     count: 25
     min_abs_usd: 200000
     max_abs_usd: 800000
@@ -276,7 +307,7 @@ drivers:  # SPEC §8.4, §8.5; amounts in local currency unless stated
     brands:
       CARDIVEX:
         lifecycle: {stage: MATURE, growth: "0.01"}
-        erosion: {alpha: "0.80", beta: "0.35"}
+        erosion: {alpha: "0.80", beta: "0.60"}
         list_price: {US10: 520, DE10: 140, ES10: 110}
         gtn_rate: {US: "0.45", EU: "0.10"}
         cogs_ratio: "0.135"
@@ -414,10 +445,10 @@ drivers:  # SPEC §8.4, §8.5; amounts in local currency unless stated
         MARKETING: {"61000000": "0.6", "61010000": "0.4"}
         SALES: {"61040000": "0.7", "61020000": "0.3"}
     research_development:
-      trials: "0.60"
+      trials: "0.65"
       collaborations: "0.12"
       medical: "0.10"
-      other: "0.18"
+      other: "0.13"
       medical_accounts: {"61010000": "0.5", "61020000": "0.5"}
       other_accounts: {"61020000": "0.5", "61030000": "0.2", "61040000": "0.3"}
       collaboration_wbs: RD-DISC-COLLAB-01
@@ -448,6 +479,12 @@ drivers:  # SPEC §8.4, §8.5; amounts in local currency unless stated
       "61080000": {default: V950001}
       "50050000": {default: V800001}
       "12000000": {default: V900001}
+    invoice_currency:  # vendors billing in a contract currency
+      V100001: USD
+      V300002: USD
+    invoices_per_month: {"61000000": 3, "61010000": 2, "61020000": 2, "61040000": 2, "61070000": 3}  # default 1
+    campaigns:  # budgeted one-offs (MEMO-BUD26)
+      - {cost_center: ES10-MKT-IMM, gl_account: "61000000", fiscal_year: 2026, period: 6, amount_lc: 2400000}
 
 noise:  # SPEC §8.9
   volume_sigma: {LAUNCH: "0.06", GROWTH: "0.045", MATURE: "0.03", DECLINE: "0.03"}

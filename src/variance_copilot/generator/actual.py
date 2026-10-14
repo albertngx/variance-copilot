@@ -27,52 +27,63 @@ def _lognormal(rng: np.random.Generator, sigma: float) -> float:
     return math.exp(sigma * rng.standard_normal() - sigma**2 / 2)
 
 
+class _Streams:
+    """One random stream per driver family, year and company, created on first use."""
+
+    def __init__(self, seed: int, year: int) -> None:
+        self._seed, self._year = seed, year
+        self._streams: dict[tuple[str, str], np.random.Generator] = {}
+
+    def __call__(self, family: str, company_code: str) -> np.random.Generator:
+        key = (family, company_code)
+        if key not in self._streams:
+            name = f"noise.{family}.{self._year}.{company_code}"
+            self._streams[key] = module_rng(self._seed, name)
+        return self._streams[key]
+
+
 def noisy_drivers(
     plan: Drivers, noise: NoiseAssumptions, master: Master, seed: int, periods: Sequence[int]
 ) -> Drivers:
-    """Actual drivers before events; each driver family draws from its own stream."""
-    year = plan.fiscal_year
+    """Actual drivers before events; a company's noise does not depend on other companies."""
+    stream = _Streams(seed, plan.fiscal_year)
+    pp = float(noise.gtn_rate_pp)
 
-    def stream(name: str) -> np.random.Generator:
-        return module_rng(seed, f"noise.{name}.{year}")
-
-    volume, price, gtn = stream("volume"), stream("price"), stream("gtn")
     price_noise = {
-        key: 1 + float(noise.net_price_sigma) * price.standard_normal()
-        for key in sorted({(c, m, p) for c, m, _, p in plan.sales if p in periods})
+        (c, m, p): 1 + float(noise.net_price_sigma) * stream("price", c).standard_normal()
+        for c, m, p in sorted({(c, m, p) for c, m, _, p in plan.sales if p in periods})
     }
     sales = {}
     for key in sorted(k for k in plan.sales if k[3] in periods):
         company_code, material, _, period = key
         s = plan.sales[key]
-        stage = master.brand_of(material).lifecycle_stage
-        quantity = s.quantity * _lognormal(volume, float(noise.volume_sigma[stage]))
-        pp = float(noise.gtn_rate_pp)
+        sigma = float(noise.volume_sigma[master.brand_of(material).lifecycle_stage])
+        quantity = s.quantity * _lognormal(stream("volume", company_code), sigma)
+        gtn = stream("gtn", company_code)
         actual_rates = {c: max(0.0, r + gtn.uniform(-pp, pp)) for c, r in sorted(s.gtn.items())}
         list_price = s.list_price * price_noise[company_code, material, period]
         sales[key] = Sales(quantity, list_price, dict(s.gtn), actual_rates)
 
-    fte_stream = stream("fte")
+    def company(cost_center: str) -> str:
+        return master.cost_centers[cost_center].company_code
+
     fte = {
-        key: value * (1 + float(noise.fte_sigma) * fte_stream.standard_normal())
+        key: value * (1 + float(noise.fte_sigma) * stream("fte", company(key[0])).standard_normal())
         for key, value in sorted(plan.fte.items())
         if key[1] in periods
     }
-    spend_stream = stream("spend")
     spend = {
-        key: value * _lognormal(spend_stream, float(noise.spend(key[1])))
+        key: value * _lognormal(stream("spend", company(key[0])), float(noise.spend(key[1])))
         for key, value in sorted(plan.spend.items(), key=lambda item: str(item[0]))
         if key[2] in periods
     }
-    variance = stream("production_variance")
-    materials = sorted(plan.standard_cost)
     production_variance = {
-        (material, period): variance.uniform(-1, 1) * float(noise.production_variance)
+        (material, period): stream("production_variance", "IE10").uniform(-1, 1)
+        * float(noise.production_variance)
         for period in periods
-        for material in materials
+        for material in sorted(plan.standard_cost)
     }
-    bonus = stream("bonus")
-    companies = sorted({master.cost_centers[cc].company_code for cc, _ in plan.fte})
+    companies = sorted({company(cc) for cc, _ in plan.fte})
     return replace(
         plan,
         version=ACTUAL,
@@ -82,7 +93,7 @@ def noisy_drivers(
         spend=spend,
         depreciation={k: v for k, v in plan.depreciation.items() if k[1] in periods},
         production_variance=production_variance,
-        bonus_true_up={c: 0.05 * bonus.standard_normal() for c in companies},
+        bonus_true_up={c: 0.05 * stream("bonus", c).standard_normal() for c in companies},
     )
 
 

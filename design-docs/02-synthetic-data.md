@@ -1,6 +1,6 @@
 # 02 Synthetic data
 
-**Status:** Partial (steps 1-5, 7, 8 built) · **Spec:** §8 · **Backlog:** M1-07..M1-19 · **Role:** scaffolding
+**Status:** Partial (all pipeline steps for the `ci` events; forecasts and E03-E12 pending) · **Spec:** §8 · **Backlog:** M1-07..M1-19 · **Role:** scaffolding
 
 ## Why it exists
 
@@ -190,5 +190,39 @@ Decisions:
 - **Intercompany flows.** Goods are invoiced in the buyer's currency and GBS fees in EUR. Both sides translate the same transaction amount, so I-05 holds to the cent. Goods are resold in the month they arrive (I-07). IE10 buys raw materials at standard cost and issues them at standard cost, plus production variances.
 - **Profit center on lines without a cost center** is `<CC><TA>` from the material's brand (IE10 → IE10MFG), or set explicitly (amortisation, GBS income).
 - **Noise streams** are keyed by driver family and year (`noise.volume.2026`, ...). Invoice lags are keyed by year and period.
-- **Sizes:** `ci` 12.1k lines (target 10k-15k). `dev` 37k lines against a 50k-70k target, to be tuned with M1-18. `full` is not yet sized.
 - **Deferred:** FY2025 special period 13 audit adjustments (dev) and FTE key figures for FC126/FC226, which come with M1-16 forecasts.
+
+**Events, ground truth, validation and `vc seed` (M1-15 for `ci`, M1-17, M1-18): built** on branch `e1-events`.
+
+| Part | Location |
+| --- | --- |
+| E01, E02, E05, E06, E07: driver layers and event documents | [generator/events.py](../src/variance_copilot/generator/events.py) |
+| Isolated impact per event, `truth.scenario_event`, `ground_truth.json` | [generator/truth.py](../src/variance_copilot/generator/truth.py), [generator/seed.py](../src/variance_copilot/generator/seed.py) |
+| V-01..V-10 | [generator/validate.py](../src/variance_copilot/generator/validate.py) |
+| `vc seed`, `vc seed verify` | [cli.py](../src/variance_copilot/cli.py) |
+
+```mermaid
+flowchart LR
+  F["build_ledger(run)"] --> D["P&L frame"]
+  F --> L["load md, fin"]
+  X["build_ledger(run, exclude={E})<br/>per event"] --> C["P&L frame"]
+  D --> T["impact of E = full - without E"] --> TR["truth.scenario_event<br/>ground_truth.json"]
+  C --> T
+  L --> V["V-01..V-10"]
+  TR --> V
+  V -->|all pass| M["manifest.json, commit"]
+  V -->|any fail| R["rollback, print check ID and sample rows"]
+```
+
+Decisions:
+
+- **Impact by counterfactual.** Each event's impact is the full ledger minus a ledger built without that event, in presentation sign, by period and P&L line. Noise is identical in both runs, so the difference is exactly the event's effect. `impact_by_version` holds the YTD value through the last closed period (P09) for the budget of the event's year. Forecast versions are added with M1-16.
+- **Measured slice per event** (`events.measure`): E01 and E07 measure third-party net sales of the brand in the company; E02 measures CH10 costs; E05 measures IE10 COGS; E06 measures ES10 R&D (S&M is the mirror image). The §8.8 target ranges are in the scenario file (`target`), and V-08 checks them as well as the manifest match.
+- **E01** removes the budget's assumed September erosion, applies the observed curve against the pre-LoE baseline from May, and cuts net price 12% from June through extra commercial rebates. COGS follows the volume, so the group offset sits in IE10's standard cost.
+- **E02** is the CHF override in the FX paths. Without it, CH10's entire cost base would be exposed to CHF and the impact would be about −USD 49m. Two US vendors bill CH10 in USD at the budget rate (`invoice_currency`: Meridia for trials, Bluefield for global marketing), which is realistic for those contracts and brings E02 to −33.8m (`ci`) and −37.7m (`dev`). To keep margin for E04a in PR E, the R&D pool also moved 5 points from "other" to trials.
+- **E06** is budgeted: BUD26 carries a 2.4m EUR IMMUVANT launch campaign on ES10-MKT-IMM in June (`campaigns`). The layer removes it from the marketing spend, and the misposted invoice and the July reclass post it to R&D and back. It nets to zero in EUR; in USD a residual of about 13k remains from the June and July rates.
+- **E07** spreads the 40m true-up over LUMORA US gross sales of P01-P07 by customer and material, with the assignment on every line.
+- **Documents in the answer key:** document events list their own documents. Overlay events (E01, E02) list the documents on the moved accounts, periods and brand.
+- **Not-yet-implemented events** in a profile (`dev`, `full`) are skipped and listed in `events_pending` in the manifest. V-09 is N/A until E12 exists.
+- **Checksums:** one SHA-256 per table over `COPY (SELECT * ORDER BY row::text COLLATE "C") TO STDOUT CSV` in UTC, independent of server collation. Plan line IDs restart with every load. V-10 regenerates inside a savepoint, compares, and rolls back.
+- **Volumes:** DE10 has 8 customers, and agency, event, consulting, travel and CRO spend come as 2-3 invoices a month. Result: `ci` 13.7k lines in about 3 s including V-10; `dev` 51.7k lines in about 10 s. CI runs `vc seed --profile ci` after the integration tests.
