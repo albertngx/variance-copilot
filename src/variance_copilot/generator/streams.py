@@ -525,6 +525,31 @@ def payroll_entries(ctx: LedgerContext, drivers: Drivers, period: int) -> list[E
     return entries
 
 
+def audit_adjustments(ctx: LedgerContext, drivers: Drivers) -> list[Entry]:
+    """Year-end audit adjustment to the bonus accrual, posted to special period 13."""
+    if not drivers.is_actual or 12 not in drivers.periods:
+        return []
+    year = drivers.fiscal_year
+    rng = module_rng(ctx.seed, f"postings.audit.{year}")
+    rate = ctx.scenario.drivers.personnel
+    entries = []
+    for company_code in sorted({ctx.master.cost_centers[cc].company_code for cc, _ in drivers.fte}):
+        factor = 0.02 * rng.standard_normal() * float(rate.bonus_rate[company_code])
+        annual: dict[str, float] = defaultdict(float)
+        for (cc, _), fte in sorted(drivers.fte.items()):
+            if ctx.master.cost_centers[cc].company_code == company_code:
+                annual[cc] += salaries(ctx.plan, cc, fte)
+        lines = [Line("60020000", base * factor, cost_center=cc) for cc, base in annual.items()]
+        lines.append(_offset(ACCRUED, lines))
+        entry = _entry(
+            ctx, company_code, "SA", date(year, 12, 31), lines, NAMED_USERS[company_code],
+            ctx.at(company_code, ctx.working_days(year + 1, 1)[9], 11),
+            header_text="Audit adjustment: bonus accrual",
+        )  # fmt: skip
+        entries.append(replace(entry, special_period=13))
+    return entries
+
+
 def _bonus_true_up(ctx: LedgerContext, drivers: Drivers, company_code: str) -> Entry:
     rate = float(ctx.scenario.drivers.personnel.bonus_rate[company_code])
     annual: dict[str, float] = defaultdict(float)
@@ -580,11 +605,16 @@ def spend_entries(ctx: LedgerContext, drivers: Drivers, period: int) -> list[Ent
     entries = []
     if not drivers.is_actual:
         for company_code, lines in by_company.items():
-            entries.append(
-                _entry(
-                    ctx, company_code, "KR", month_end, [*lines, _offset(AP, lines)], "INTERFACE_AP"
-                )
-            )
+            by_currency: dict[str, list[Line]] = defaultdict(list)
+            for line in lines:
+                currency, billed = _invoice_currency(ctx, company_code, year, line)
+                by_currency[currency].append(billed)
+            for currency, billed_lines in by_currency.items():
+                billed_lines.append(_offset(AP, billed_lines))
+                entries.append(
+                    _entry(ctx, company_code, "KR", month_end, billed_lines, "INTERFACE_AP",
+                           currency=currency)
+                )  # fmt: skip
         return entries
 
     lag = module_rng(ctx.seed, f"postings.invoice_lag.{year}.{period}")
@@ -824,6 +854,7 @@ def base_entries(ctx: LedgerContext, drivers: Drivers) -> Iterator[Entry]:
         yield from payroll_entries(ctx, drivers, period)
         yield from spend_entries(ctx, drivers, period)
         yield from depreciation_entries(ctx, drivers, period)
+    yield from audit_adjustments(ctx, drivers)
 
 
 def close_entries(ctx: LedgerContext, drivers: Drivers, entries: list[Entry]) -> list[Entry]:

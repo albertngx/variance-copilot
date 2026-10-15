@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -9,9 +10,24 @@ from typing import Any, Literal
 
 from sqlalchemy import Connection, text
 
-from variance_copilot.generator.config import ScenarioConfig
+from variance_copilot.config import load_materiality
+from variance_copilot.generator.config import Decoys, ScenarioConfig
+from variance_copilot.generator.events import (
+    ALL_COMPANIES,
+    DECOY_EVENT,
+    NET_SALES,
+    OPEX,
+    event_year,
+)
 from variance_copilot.generator.model import Master
-from variance_copilot.generator.truth import EventTruth, Frame, difference, event_truth, pnl_frame
+from variance_copilot.generator.truth import (
+    EventTruth,
+    Frame,
+    Frames,
+    difference,
+    event_truth,
+    frames,
+)
 
 Status = Literal["PASS", "FAIL", "N/A"]
 SAMPLE_ROWS = 5
@@ -33,10 +49,8 @@ class Expectations:
 
     master: Master
     calibration_year: int | None
-    calibration: Mapping[str, Decimal]  # brand -> FY net sales target, USD
-    tolerance: Decimal
     truths: Mapping[str, EventTruth]
-    without_event: Mapping[str, Frame]
+    without_event: Mapping[str, Frames]
     last_closed: int
     decoys_active: bool
     checksums: Mapping[str, str]
@@ -134,30 +148,63 @@ SQL_CHECKS = {
 }
 
 
-def _calibration(conn: Connection, expected: Expectations) -> CheckResult:
-    description = "FY2025 brand net sales within ±3% of the calibration targets"
-    if expected.calibration_year is None:
-        return CheckResult("V-07", description, "N/A", "profile has no FY2025 actuals")
-    actual = {
+def _calibration(conn: Connection, expected: Expectations, scenario: ScenarioConfig) -> CheckResult:
+    description = "FY2025 net sales by brand and group within ±3%, FTE by company within ±5%"
+    year = expected.calibration_year
+    if year is None:
+        return CheckResult("V-07", description, "N/A", "profile has no full FY2025 actuals")
+    targets = scenario.calibration
+    net_sales = {
         row["brand"]: Decimal(row["net_sales"])
         for row in _rows(
             conn,
             """
             SELECT brand, sum(amount_gc) AS net_sales FROM rpt.pnl_actual
-            WHERE fiscal_year = :year AND NOT is_intercompany
+            WHERE fiscal_year = :year AND period <= 12 AND NOT is_intercompany
               AND pnl_category IN ('GROSS_SALES', 'GTN_DEDUCTION')
             GROUP BY brand
             """,
-            year=expected.calibration_year,
+            year=year,
         )
     }
+    fte = {
+        row["company_code"]: Decimal(row["fte"])
+        for row in _rows(
+            conn,
+            """
+            SELECT company_code, sum(value) / count(DISTINCT period) AS fte
+            FROM fin.stat_key_figure
+            WHERE version = 'ACT' AND key_figure = 'FTE' AND fiscal_year = :year
+            GROUP BY company_code
+            """,
+            year=year,
+        )
+    }
+    million = Decimal(1_000_000)
+    checks = [
+        (f"net sales {brand}", net_sales.get(brand, Decimal(0)), t.net_sales_musd * million,
+         targets.tolerance)
+        for brand, t in targets.brands.items()
+    ]  # fmt: skip
+    checks.append(
+        (
+            "group net sales",
+            sum(net_sales.values(), Decimal(0)),
+            targets.group_net_sales_musd * million,
+            targets.tolerance,
+        )
+    )
+    checks += [
+        (f"FTE {c}", fte.get(c, Decimal(0)), t, targets.fte_tolerance)
+        for c, t in targets.fte.items()
+    ]
     misses = [
-        {"brand": brand, "target": str(target), "actual": str(actual.get(brand, 0))}
-        for brand, target in expected.calibration.items()
-        if abs(actual.get(brand, Decimal(0)) / target - 1) > expected.tolerance
+        {"measure": name, "target": str(target), "actual": str(actual.quantize(Decimal("0.01")))}
+        for name, actual, target, tolerance in checks
+        if abs(actual / target - 1) > tolerance
     ]
     if misses:
-        return CheckResult("V-07", description, "FAIL", f"{len(misses)} brands off target", misses)
+        return CheckResult("V-07", description, "FAIL", f"{len(misses)} off target", misses)
     return CheckResult("V-07", description, "PASS")
 
 
@@ -165,38 +212,38 @@ def _close(actual: Decimal, expected: Decimal) -> bool:
     return abs(actual - expected) <= max(abs(expected) * IMPACT_TOLERANCE, Decimal(1))
 
 
+def _loaded(conn: Connection, master: Master) -> Frames:
+    columns = (
+        "company_code, fiscal_year, period, gl_account, functional_area, material,"
+        " trading_partner, amount_lc, amount_gc"
+    )
+    lines = _rows(conn, f"SELECT {columns} FROM fin.journal_line")  # noqa: S608
+    plans = _rows(conn, f"SELECT plan_category, {columns} FROM fin.plan_line")  # noqa: S608
+    return frames(lines, plans, master)
+
+
 def _event_impacts(
-    conn: Connection, expected: Expectations, scenario: ScenarioConfig
+    conn: Connection, expected: Expectations, scenario: ScenarioConfig, loaded: Frames
 ) -> CheckResult:
     description = "Event impacts recomputed from the ledger match the manifest within 0.5%"
     if not expected.truths:
         return CheckResult("V-08", description, "N/A", "no events in profile")
-    lines = _rows(
-        conn,
-        """
-        SELECT company_code, fiscal_year, period, gl_account, functional_area, material,
-               trading_partner, amount_lc, amount_gc
-        FROM fin.journal_line
-        """,
-    )
-    loaded = pnl_frame(lines, expected.master)
-    misses = []
+    misses: list[dict[str, Any]] = []
     for event_id, truth in expected.truths.items():
-        diff = difference(loaded, expected.without_event[event_id])
+        last_closed = expected.last_closed if truth.fiscal_year == scenario.as_of.year else 12
         recomputed = event_truth(
-            scenario, event_id, diff, truth.documents, truth.fiscal_year, expected.last_closed
-        )
-        periods = set(truth.by_period) | set(recomputed.by_period)
-        for period in sorted(periods):
-            got = recomputed.by_period.get(period, Decimal(0))
-            want = truth.by_period.get(period, Decimal(0))
-            if not _close(got, want):
-                misses.append(
-                    {"event": event_id, "period": period, "ledger": str(got), "manifest": str(want)}
-                )
-        target = scenario.event(event_id).target
-        value = recomputed.target_value
-        if target and value is not None and not (target.low - 1 <= value <= target.high + 1):
+            scenario, event_id, loaded, expected.without_event[event_id], truth.documents,
+            truth.fiscal_year, last_closed,
+        )  # fmt: skip
+        for version, by_period in truth.by_version.items():
+            got_periods = recomputed.by_version.get(version, {})
+            for period in sorted(set(by_period) | set(got_periods)):
+                got, want = got_periods.get(period, Decimal(0)), by_period.get(period, Decimal(0))
+                if not _close(got, want):
+                    misses.append({"event": event_id, "version": version, "period": period,
+                                   "ledger": str(got), "manifest": str(want)})  # fmt: skip
+        target, value = scenario.event(event_id).target, recomputed.target_value
+        if target and value is not None and not target.low - 1 <= value <= target.high + 1:
             misses.append(
                 {"event": event_id, "target": f"{target.low}..{target.high}", "ledger": str(value)}
             )
@@ -207,11 +254,65 @@ def _event_impacts(
     return CheckResult("V-08", description, "PASS")
 
 
-def _decoys(expected: Expectations) -> CheckResult:
-    description = "Decoys stay below materiality"
+def _decoys(expected: Expectations, scenario: ScenarioConfig, loaded: Frames) -> CheckResult:
+    description = "Decoys stay below materiality; the stable brand stays within its band"
     if not expected.decoys_active:
         return CheckResult("V-09", description, "N/A", "E12 not in profile")
-    return CheckResult("V-09", description, "FAIL", "E12 decoys are not implemented yet")
+    event = scenario.event(DECOY_EVENT)
+    assert isinstance(event, Decoys)  # noqa: S101
+    floor = load_materiality().pnl_line.company_code.relative_floor
+    budget_version = f"BUD{event_year(scenario, event) % 100}"
+    budget = loaded.plans.get(budget_version, {})
+    diff = difference(loaded.actual, expected.without_event[DECOY_EVENT].actual)
+
+    def cells(frame: Frame) -> dict[tuple[str, int, str], Decimal]:
+        totals: dict[tuple[str, int, str], Decimal] = defaultdict(Decimal)
+        for key, (_, gc) in frame.items():
+            if key[4] in OPEX and key[2] <= expected.last_closed and not key[7]:
+                totals[key[0], key[2], key[4]] += gc
+        return totals
+
+    planned = cells(budget)
+    misses: list[dict[str, Any]] = []
+    year_to_date: dict[tuple[str, str], Decimal] = defaultdict(Decimal)
+    for cell, delta in cells(diff).items():
+        year_to_date[cell[0], cell[2]] += delta
+        relative = abs(delta / planned[cell]) if planned.get(cell) else Decimal(1)
+        if abs(delta) > event.max_abs_usd + 1 or abs(delta) >= floor or relative >= event.max_rel:
+            misses.append({"cell": cell, "delta": str(delta), "relative": str(relative)})
+    absolute = load_materiality().pnl_line.company_code.absolute
+    misses += [
+        {"line": line, "ytd": str(delta)}
+        for line, delta in year_to_date.items()
+        if abs(delta) >= absolute
+    ]
+
+    def stable_net(frame: Frame, company_code: str | None) -> Decimal:
+        return sum(
+            (gc for key, (_, gc) in frame.items()
+             if key[6] == event.stable_brand and key[5] in NET_SALES and not key[7]
+             and key[2] <= expected.last_closed and key[1] == scenario.as_of.year
+             and company_code in (None, key[0])),
+            Decimal(0),
+        )  # fmt: skip
+
+    for company_code in (None, *ALL_COMPANIES):
+        planned_net = stable_net(budget, company_code)
+        if planned_net:
+            ratio = stable_net(loaded.actual, company_code) / planned_net - 1
+            if abs(ratio) > event.stable_tolerance:
+                misses.append(
+                    {
+                        "brand": event.stable_brand,
+                        "company": company_code or "group",
+                        "vs_budget": str(ratio),
+                    }
+                )
+    if misses:
+        return CheckResult(
+            "V-09", description, "FAIL", f"{len(misses)} exceed limits", misses[:SAMPLE_ROWS]
+        )
+    return CheckResult("V-09", description, "PASS")
 
 
 def _determinism(expected: Expectations) -> CheckResult:
@@ -233,10 +334,11 @@ def run_checks(
     conn: Connection, expected: Expectations, scenario: ScenarioConfig
 ) -> list[CheckResult]:
     results = [_sql_check(conn, check_id, *check) for check_id, check in SQL_CHECKS.items()]
+    loaded = _loaded(conn, expected.master)
     results += [
-        _calibration(conn, expected),
-        _event_impacts(conn, expected, scenario),
-        _decoys(expected),
+        _calibration(conn, expected, scenario),
+        _event_impacts(conn, expected, scenario, loaded),
+        _decoys(expected, scenario, loaded),
         _determinism(expected),
     ]
     return results

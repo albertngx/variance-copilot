@@ -1,6 +1,6 @@
 # 01 Data model
 
-**Status:** Partial (schema built; seed data pending) · **Spec:** §7 · **Backlog:** M1-01..M1-06
+**Status:** Implemented · **Spec:** §7 · **Backlog:** M1-01..M1-06
 
 ## Accounting primer
 

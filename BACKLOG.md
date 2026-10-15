@@ -230,26 +230,26 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 - **Acceptance criteria**
   - [x] `fin.plan_version` rows for `BUD25`, `BUD26`, `FC126`, `FC226` per §7.9.
   - [x] Plan GC translated at the version's rate type.
-  - [ ] FTE and HEADCOUNT stored in `fin.stat_key_figure` for `ACT` and every plan version. (ACT, BUD25, BUD26 done; FC126/FC226 with M1-16)
+  - [x] FTE and HEADCOUNT stored in `fin.stat_key_figure` for `ACT` and every plan version.
 
 #### M1-15 Scenario events and ground truth
 - **Spec:** §8.8, Appendix A · **Priority:** Must · **Size:** L · **Depends on:** M1-13, M1-14
 - Implement E01–E12 (the `ci` profile needs E01, E02, E05, E06, E07 first); record documents and exact impact per plan version, per period and YTD in `truth.scenario_event`.
 - **Acceptance criteria**
-  - [ ] Each event's impact lands within its §8.8 target range. (`ci` events E01, E02, E05, E06, E07 done)
-  - [ ] E04b milestone is capitalised (13000000 / 20000000, TC USD) with zero P&L impact.
-  - [ ] E06 nets to zero YTD; E10 nets to zero at group level. (E06 done)
+  - [x] Each event's impact lands within its §8.8 target range.
+  - [x] E04b milestone is capitalised (13000000 / 20000000, TC USD) with zero P&L impact.
+  - [x] E06 nets to zero YTD; E10 nets to zero at group level.
   - [x] E07 lines carry assignment `TRUEUP-2026P01-P07`.
-  - [ ] E12: 25 decoys below materiality; NEURELIS within ±2% of budget.
+  - [x] E12: 25 decoys below materiality; NEURELIS within ±2% of budget.
   - [x] `truth.scenario_event.documents` references real documents.
 
 #### M1-16 Forecast generation
 - **Spec:** §8.10 · **Priority:** Must · **Size:** M · **Depends on:** M1-15
 - **Acceptance criteria**
-  - [ ] `FC126` has actuals P01–P03; `FC226` has actuals P01–P06; remaining months re-planned.
-  - [ ] Event knowledge per version follows the §8.10 table exactly (unit-tested per event).
-  - [ ] Opex run-rate blended 50/50 budget phasing and trailing 3-month actuals.
-  - [ ] Variance vs `FC226` is small for E01/E02 and large for E05/E07.
+  - [x] `FC126` has actuals P01–P03; `FC226` has actuals P01–P06; remaining months re-planned.
+  - [x] Event knowledge per version follows the §8.10 table exactly (unit-tested per event).
+  - [x] Opex run-rate blended 50/50 budget phasing and trailing 3-month actuals.
+  - [x] Variance vs `FC226` is small for E01/E02 and large for E05/E07.
 
 #### M1-17 Generated-data validation suite
 - **Spec:** §8.13 · **Priority:** Must · **Size:** M · **Depends on:** M1-15, M1-16
@@ -268,8 +268,8 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 #### M1-19 Calibration to FY2025 targets
 - **Spec:** §8.4 calibration table · **Priority:** Must · **Size:** M · **Depends on:** M1-15
 - **Acceptance criteria**
-  - [ ] FY2025 net sales per brand within ±3% of targets (V-07), group ≈ USD 6.3bn.
-  - [ ] FTEs per company within ±5% of §8.5 figures.
+  - [x] FY2025 net sales per brand within ±3% of targets (V-07), group ≈ USD 6.3bn.
+  - [x] FTEs per company within ±5% of §8.5 figures.
 
 ---
 

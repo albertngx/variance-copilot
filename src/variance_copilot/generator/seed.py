@@ -6,7 +6,6 @@ import hashlib
 import json
 import subprocess
 from dataclasses import dataclass
-from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
 
@@ -14,26 +13,28 @@ import psycopg
 from sqlalchemy import Connection, text
 
 from variance_copilot import __version__
-from variance_copilot.generator.calendar import period_statuses
+from variance_copilot.generator import events
 from variance_copilot.generator.db import upsert
-from variance_copilot.generator.events import measure
 from variance_copilot.generator.master import TABLES as MASTER_TABLES
-from variance_copilot.generator.model import Master
+from variance_copilot.generator.model import Master, Rates
 from variance_copilot.generator.pipeline import (
     Ledger,
     Run,
+    all_plan_rows,
     build_ledger,
+    last_closed_period,
     load_ledger,
     load_reference_data,
     prepare,
 )
+from variance_copilot.generator.plan import PlanContext
 from variance_copilot.generator.truth import (
     EventTruth,
-    Frame,
+    Frames,
     affected_documents,
     difference,
     event_truth,
-    pnl_frame,
+    frames,
 )
 from variance_copilot.generator.validate import CheckResult, Expectations, failures, run_checks
 
@@ -59,7 +60,8 @@ class SeedValidationError(Exception):
 @dataclass
 class Generated:
     ledger: Ledger
-    without_event: dict[str, Frame]
+    full: Frames
+    without_event: dict[str, Frames]
     truths: dict[str, EventTruth]
 
 
@@ -72,38 +74,42 @@ class SeedResult:
     truths: dict[str, EventTruth]
 
 
-def last_closed_period(run: Run, year: int) -> int:
-    statuses = period_statuses(
-        run.scenario.calendar, run.profile.company_codes[:1], [year], run.scenario.as_of
-    )
-    closed = [s.period for s in statuses if s.status == "CLOSED" and s.period <= 12]
-    return min(
-        max(closed, default=0),
-        run.profile.end.period if year == run.profile.end.fiscal_year else 12,
-    )
+def ledger_frames(ledger: Ledger) -> Frames:
+    return frames(ledger.journal.lines, all_plan_rows(ledger), Master(ledger.master))
 
 
-def budget_versions(ledger: Ledger, year: int) -> list[str]:
-    return [b.version for b in ledger.budgets if b.fiscal_year == year]
+def _decoy_details(run: Run, ledger: Ledger) -> list[dict[str, Any]]:
+    event = run.scenario.event(events.DECOY_EVENT)
+    budget = next(
+        b for b in ledger.budgets if b.fiscal_year == events.event_year(run.scenario, event)
+    )
+    plan = PlanContext(
+        run.scenario, Master(ledger.master), Rates(ledger.fx_rates), run.profile.company_codes
+    )
+    last_closed = last_closed_period(run, budget.fiscal_year)
+    return [vars(d) for d in events.decoys(event, plan, budget, run.seed, last_closed)]  # type: ignore[arg-type]
 
 
 def generate(run: Run) -> Generated:
     """The ledger plus one run without each event, giving each event's isolated impact."""
     ledger = build_ledger(run)
     master = Master(ledger.master)
-    full = pnl_frame(ledger.journal.lines, master)
+    full = ledger_frames(ledger)
     without, truths = {}, {}
     for event_id in ledger.events:
-        without[event_id] = pnl_frame(build_ledger(run, exclude={event_id}).journal.lines, master)
-        diff = difference(full, without[event_id])
+        without[event_id] = ledger_frames(build_ledger(run, exclude={event_id}))
+        diff = difference(full.actual, without[event_id].actual)
+        scope = events.measure(run.scenario, event_id)
         documents = ledger.journal.event_documents.get(event_id) or affected_documents(
-            ledger.journal, diff, measure(run.scenario, event_id), master
+            ledger.journal, diff, scope, master
         )
-        year = max(k[1] for k in diff) if diff else run.profile.end.fiscal_year
+        year = events.event_year(run.scenario, run.scenario.event(event_id))
+        details = _decoy_details(run, ledger) if event_id == events.DECOY_EVENT else None
         truths[event_id] = event_truth(
-            run.scenario, event_id, diff, documents, year, last_closed_period(run, year)
-        )
-    return Generated(ledger, without, truths)
+            run.scenario, event_id, full, without[event_id], documents, year,
+            last_closed_period(run, year), details,
+        )  # fmt: skip
+    return Generated(ledger, full, without, truths)
 
 
 def write_truth(conn: Connection, truths: dict[str, EventTruth], ledger: Ledger) -> None:
@@ -119,9 +125,7 @@ def write_truth(conn: Connection, truths: dict[str, EventTruth], ledger: Ledger)
             "periods": t.periods,
             "expected_classification": t.classification,
             "recurrence": t.recurrence,
-            "impact_by_version": json.dumps(
-                t.impact_by_version(budget_versions(ledger, t.fiscal_year))
-            ),
+            "impact_by_version": json.dumps(t.impact_by_version()),
             "documents": t.documents,
             "narrative": t.title,
         }
@@ -197,9 +201,9 @@ def _expectations(
     conn: Connection, run: Run, generated: Generated, checksums: dict[str, str]
 ) -> Expectations:
     calibration_year = run.scenario.drivers.revenue.calibration_year
-    has_calibration_year = calibration_year in run.profile.fiscal_years and set(
+    calibrated = calibration_year in run.profile.fiscal_years and set(
         run.profile.company_codes
-    ) >= {"US10", "DE10", "ES10"}
+    ) == set(events.ALL_COMPANIES)
 
     def regenerate() -> dict[str, str]:
         with conn.begin_nested() as savepoint:
@@ -210,30 +214,22 @@ def _expectations(
 
     return Expectations(
         master=Master(generated.ledger.master),
-        calibration_year=calibration_year if has_calibration_year else None,
-        calibration={
-            brand: target.net_sales_musd * Decimal(1_000_000)
-            for brand, target in run.scenario.calibration.brands.items()
-        },
-        tolerance=run.scenario.calibration.tolerance,
+        calibration_year=calibration_year if calibrated else None,
         truths=generated.truths,
         without_event=generated.without_event,
         last_closed=last_closed_period(run, run.profile.end.fiscal_year),
-        decoys_active="E12" in generated.ledger.events,
+        decoys_active=events.DECOY_EVENT in generated.ledger.events,
         checksums=checksums,
         regenerate=regenerate,
     )
 
 
 def ground_truth_json(run: Run, generated: Generated) -> dict[str, Any]:
-    ledger = generated.ledger
     return {
         "scenario": run.scenario.scenario,
         "profile": run.name,
         "seed": run.seed,
-        "events": [
-            t.as_json(budget_versions(ledger, t.fiscal_year)) for t in generated.truths.values()
-        ],
+        "events": [t.as_json() for t in generated.truths.values()],
     }
 
 
