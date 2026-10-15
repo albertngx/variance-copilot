@@ -98,6 +98,7 @@ class Entry:
     accrual_key: str | None = None
     reverses: str | None = None
     event_id: str | None = None
+    special_period: int | None = None
 
     @property
     def fiscal_year(self) -> int:
@@ -105,7 +106,7 @@ class Entry:
 
     @property
     def period(self) -> int:
-        return self.posting_date.month
+        return self.special_period or self.posting_date.month
 
 
 class Rates:
@@ -162,6 +163,9 @@ class Master:
     def customers_of(self, company_code: str, channel: str) -> list[Customer]:
         country = self.country(company_code)
         return [c for c in self.customers if c.country_code == country and c.channel == channel]
+
+    def channel_of(self, customer: str | None) -> str | None:
+        return next((c.channel for c in self.customers if c.customer == customer), None)
 
     def brand_of(self, material: str) -> Brand:
         return self.brands[self.materials[material].brand]

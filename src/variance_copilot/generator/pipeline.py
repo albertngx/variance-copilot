@@ -19,19 +19,27 @@ from variance_copilot.generator.config import (
     load_scenario,
 )
 from variance_copilot.generator.db import copy_rows, upsert
+from variance_copilot.generator.forecast import CUT_OFFS, forecast_drivers
 from variance_copilot.generator.model import Drivers, Entry, Master, Rates
 from variance_copilot.generator.plan import PlanContext, budget_drivers
-from variance_copilot.generator.plan_lines import plan_lines, plan_versions, stat_key_figures
+from variance_copilot.generator.plan_lines import (
+    actual_rows,
+    plan_lines,
+    plan_versions,
+    stat_key_figures,
+)
 from variance_copilot.generator.postings import (
     HEADER_COLUMNS,
     LINE_COLUMNS,
     Journal,
+    Row,
     in_window,
     post,
 )
 from variance_copilot.generator.rng import module_rng
 from variance_copilot.generator.streams import LedgerContext, base_entries, close_entries
 
+FORECAST_YEAR = 2026
 LEDGER_TABLES = ("fin.journal_line", "fin.journal_header", "fin.plan_line", "fin.stat_key_figure")
 
 
@@ -52,6 +60,7 @@ class Ledger:
     events: list[str] = field(default_factory=list)
     budgets: list[Drivers] = field(default_factory=list)
     actuals: list[Drivers] = field(default_factory=list)
+    forecasts: list[Drivers] = field(default_factory=list)
     plan_entries: dict[str, list[Entry]] = field(default_factory=dict)
     actual_entries: list[Entry] = field(default_factory=list)
     journal: Journal = field(default_factory=lambda: Journal([], []))
@@ -91,10 +100,18 @@ def actual_periods(run: Run, year: int) -> list[int]:
     return list(range(start, end + 1))
 
 
+def last_closed_period(run: Run, year: int) -> int:
+    statuses = calendar.period_statuses(
+        run.scenario.calendar, run.profile.company_codes[:1], [year], run.scenario.as_of
+    )
+    closed = max((s.period for s in statuses if s.status == "CLOSED" and s.period <= 12), default=0)
+    return min(closed, run.profile.end.period if year == run.profile.end.fiscal_year else 12)
+
+
 def build_ledger(
     run: Run, exclude: Iterable[str] = (), master_dir: Path = master.DEFAULT_SEEDS_DIR
 ) -> Ledger:
-    """Steps 4, 5, 7, 8 and 9 in memory; ``exclude`` drops events for counterfactuals."""
+    """Steps 4-9 in memory; ``exclude`` drops events for counterfactual runs."""
     data = master.read_master_data(master_dir)
     active = events.active_events(run.scenario, run.profile.events, exclude)
     ledger = Ledger(data, generate_fx(run, active), active)
@@ -102,11 +119,11 @@ def build_ledger(
     companies = run.profile.company_codes
     plan_ctx = PlanContext(run.scenario, lookups, rates, companies)
     ctx = LedgerContext(run.scenario, lookups, rates, companies, run.profile.billing, run.seed)
-    as_of = run.scenario.as_of
-    layers = events.layers(run.scenario, plan_ctx, active)
+    as_of, last_closed = run.scenario.as_of, last_closed_period(run, run.profile.end.fiscal_year)
 
-    for year in run.profile.fiscal_years:
-        budget = budget_drivers(plan_ctx, year)
+    budgets = {year: budget_drivers(plan_ctx, year) for year in run.profile.fiscal_years}
+    layers = events.layers(run.scenario, plan_ctx, active, budgets, run.seed, last_closed)
+    for year, budget in budgets.items():
         ledger.budgets.append(budget)
         entries = list(base_entries(ctx, budget))
         ledger.plan_entries[budget.version] = entries + close_entries(ctx, budget, entries)
@@ -121,6 +138,18 @@ def build_ledger(
     close = [e for d in ledger.actuals for e in close_entries(ctx, d, base) if in_window(e, as_of)]
     ledger.actual_entries = base + close
     ledger.journal = post(ledger.actual_entries, lookups, rates)
+
+    for version, cut in CUT_OFFS.items():
+        actual = next((d for d in ledger.actuals if d.fiscal_year == FORECAST_YEAR), None)
+        if actual is None or cut not in actual.periods:
+            continue
+        known = events.layers(
+            run.scenario, plan_ctx, active, budgets, run.seed, last_closed, version
+        )
+        drivers = forecast_drivers(budgets[FORECAST_YEAR], actual, version, known)
+        ledger.forecasts.append(drivers)
+        entries = list(base_entries(ctx, drivers))
+        ledger.plan_entries[version] = entries + close_entries(ctx, drivers, entries)
     return ledger
 
 
@@ -149,25 +178,35 @@ def load_reference_data(
     }
 
 
+def all_plan_rows(ledger: Ledger) -> list[Row]:
+    """Budget lines, and forecast lines with the actual months copied in."""
+    lookups, rates = Master(ledger.master), Rates(ledger.fx_rates)
+    rows = []
+    for drivers in [*ledger.budgets, *ledger.forecasts]:
+        if drivers.version in CUT_OFFS:
+            through = CUT_OFFS[drivers.version]
+            rows += actual_rows(
+                drivers.version, drivers.fiscal_year, through, ledger.journal.lines, lookups
+            )
+        rows += plan_lines(drivers, ledger.plan_entries[drivers.version], lookups, rates)
+    return rows
+
+
 def load_ledger(conn: Connection, run: Run, ledger: Ledger) -> dict[str, int]:
     """Replace the fin data with the generated ledger, plans and key figures."""
-    lookups, rates = Master(ledger.master), Rates(ledger.fx_rates)
+    lookups = Master(ledger.master)
     conn.execute(text(f"TRUNCATE {', '.join(LEDGER_TABLES)} RESTART IDENTITY"))
     upsert(conn, "fin.plan_version", plan_versions(run.profile.fiscal_years), ("plan_category",))
     copy_rows(conn, "fin.journal_header", HEADER_COLUMNS, ledger.journal.headers)
     copy_rows(conn, "fin.journal_line", LINE_COLUMNS, ledger.journal.lines)
 
-    plan_rows = [
-        row
-        for budget in ledger.budgets
-        for row in plan_lines(budget, ledger.plan_entries[budget.version], lookups, rates)
-    ]
+    plan_rows = all_plan_rows(ledger)
     if plan_rows:
         copy_rows(conn, "fin.plan_line", list(plan_rows[0]), plan_rows)
     fte_per_head = run.scenario.drivers.personnel.fte_per_head
     figures = [
         row
-        for drivers in [*ledger.budgets, *ledger.actuals]
+        for drivers in [*ledger.budgets, *ledger.actuals, *ledger.forecasts]
         for row in stat_key_figures(drivers, lookups, fte_per_head)
     ]
     if figures:

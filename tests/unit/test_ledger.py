@@ -186,3 +186,16 @@ def test_plan_versions_and_key_figures(ledger: tuple[str, Ledger]) -> None:
         figures = stat_key_figures(drivers, master, per_head)
         assert {f["key_figure"] for f in figures} == {"FTE", "HEADCOUNT"}
         assert {f["version"] for f in figures} == {drivers.version}
+
+
+def test_fy2025_audit_adjustments_post_to_period_13(ledger: tuple[str, Ledger]) -> None:
+    name, generated = ledger
+    special = [h for h in generated.journal.headers if h["period"] == 13]
+    if name == "ci":
+        assert special == []
+        return
+    assert {h["company_code"] for h in special} == set(prepare(name).profile.company_codes)
+    assert {(h["fiscal_year"], h["posting_date"], h["document_type"]) for h in special} == {
+        (2025, date(2025, 12, 31), "SA")
+    }
+    assert all(h["entry_ts"].year == 2026 for h in special)

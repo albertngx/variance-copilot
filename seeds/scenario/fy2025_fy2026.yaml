@@ -89,6 +89,7 @@ events:  # SPEC §8.8; known_by per §8.10; target in presentation sign (E06: th
     title: IMMUVANT EU launch ahead of the budget launch curve
     classification: LAUNCH_OUTPERFORMANCE
     recurrence: RECURRING
+    target: {currency: EUR, periods: [1, 2, 3, 4, 5, 6, 7, 8, 9], low: 10000000, high: 15000000}
     brand: IMMUVANT
     launch_period: {DE10: 2, ES10: 3}
     volume_uplift: "0.30"
@@ -100,6 +101,7 @@ events:  # SPEC §8.8; known_by per §8.10; target in presentation sign (E06: th
     title: ONKARIS Phase III enrollment ahead of plan
     classification: RD_ACCELERATION
     recurrence: NON_RECURRING
+    target: {currency: CHF, periods: [4, 5, 6, 7], low: -22000000, high: -22000000}
     company_code: CH10
     wbs_element: RD-ONK-P3-01
     cost_center: CH10-RD-ONC
@@ -116,6 +118,7 @@ events:  # SPEC §8.8; known_by per §8.10; target in presentation sign (E06: th
     title: KRB-301 licence milestone capitalised under POL-005
     classification: CAPITALISED_MILESTONE
     recurrence: NON_RECURRING
+    target: {currency: USD, periods: [4], low: 0, high: 0}
     company_code: CH10
     period: 4
     vendor: V200001
@@ -220,6 +223,7 @@ events:  # SPEC §8.8; known_by per §8.10; target in presentation sign (E06: th
     title: March congress costs not accrued, invoiced in April
     classification: CUT_OFF_ERROR
     recurrence: TIMING
+    target: {currency: EUR, periods: [3], low: 1500000, high: 1500000}
     company_code: DE10
     gl_account: "61010000"
     cost_center: DE10-MKT-CV
@@ -252,6 +256,7 @@ events:  # SPEC §8.8; known_by per §8.10; target in presentation sign (E06: th
     title: Gain on divesting the rights to DERMAVEL
     classification: DIVESTMENT_GAIN
     recurrence: NON_RECURRING
+    target: {currency: USD, periods: [9], low: 35000000, high: 35000000}
     company_code: CH10
     fiscal_year: 2025
     period: 9
@@ -445,10 +450,10 @@ drivers:  # SPEC §8.4, §8.5; amounts in local currency unless stated
         MARKETING: {"61000000": "0.6", "61010000": "0.4"}
         SALES: {"61040000": "0.7", "61020000": "0.3"}
     research_development:
-      trials: "0.65"
+      trials: "0.70"
       collaborations: "0.12"
       medical: "0.10"
-      other: "0.13"
+      other: "0.08"
       medical_accounts: {"61010000": "0.5", "61020000": "0.5"}
       other_accounts: {"61020000": "0.5", "61030000": "0.2", "61040000": "0.3"}
       collaboration_wbs: RD-DISC-COLLAB-01

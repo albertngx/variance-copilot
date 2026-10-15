@@ -1,6 +1,6 @@
 # 02 Synthetic data
 
-**Status:** Partial (all pipeline steps for the `ci` events; forecasts and E03-E12 pending) · **Spec:** §8 · **Backlog:** M1-07..M1-19 · **Role:** scaffolding
+**Status:** Implemented (`full` profile not yet sized) · **Spec:** §8 · **Backlog:** M1-07..M1-19 · **Role:** scaffolding
 
 ## Why it exists
 
@@ -223,6 +223,38 @@ Decisions:
 - **E06** is budgeted: BUD26 carries a 2.4m EUR IMMUVANT launch campaign on ES10-MKT-IMM in June (`campaigns`). The layer removes it from the marketing spend, and the misposted invoice and the July reclass post it to R&D and back. It nets to zero in EUR; in USD a residual of about 13k remains from the June and July rates.
 - **E07** spreads the 40m true-up over LUMORA US gross sales of P01-P07 by customer and material, with the assignment on every line.
 - **Documents in the answer key:** document events list their own documents. Overlay events (E01, E02) list the documents on the moved accounts, periods and brand.
-- **Not-yet-implemented events** in a profile (`dev`, `full`) are skipped and listed in `events_pending` in the manifest. V-09 is N/A until E12 exists.
 - **Checksums:** one SHA-256 per table over `COPY (SELECT * ORDER BY row::text COLLATE "C") TO STDOUT CSV` in UTC, independent of server collation. Plan line IDs restart with every load. V-10 regenerates inside a savepoint, compares, and rolls back.
 - **Volumes:** DE10 has 8 customers, and agency, event, consulting, travel and CRO spend come as 2-3 invoices a month. Result: `ci` 13.7k lines in about 3 s including V-10; `dev` 51.7k lines in about 10 s. CI runs `vc seed --profile ci` after the integration tests.
+
+**All events, forecasts and calibration (M1-14 FC key figures, M1-15, M1-16, M1-19): built** on branch `e1-forecasts-and-events`.
+
+| Part | Location |
+| --- | --- |
+| E03, E04a, E04b, E08, E09, E10, E11, E12 | [generator/events.py](../src/variance_copilot/generator/events.py) |
+| FC126 and FC226 drivers | [generator/forecast.py](../src/variance_copilot/generator/forecast.py) |
+| Actual months copied into forecasts | `plan_lines.actual_rows`, `pipeline.all_plan_rows` |
+| FY2025 period 13 audit adjustments | `streams.audit_adjustments` |
+| Impact per version, decoy list | [generator/truth.py](../src/variance_copilot/generator/truth.py) |
+
+```mermaid
+flowchart LR
+  B["BUD26 drivers"] --> FD["forecast drivers<br/>months after cut-off"]
+  A["actual drivers"] -->|"trailing 3 months"| FD
+  K["layers of the events<br/>the version knows"] --> FD
+  FD --> PE["plan entries"] --> FL["FC lines, later months"]
+  J["journal, months up to cut-off"] --> CL["FC lines, copied actuals"]
+```
+
+Decisions:
+
+- **Forecasts.** Months up to the cut-off are copied from the journal as booked (LC and GC). Later months are re-planned from BUD26 drivers: sales and transfer prices from the budget, FTE scaled by the cut-off month's actual/budget ratio per cost center, and opex = 50% budget phasing + 50% trailing three-month actual run-rate. Trial and collaboration accounts keep their budget curve. Then the layers of the events in `known_by` are applied. E03 uses the forecast signal (+15% / +30%), E04a plans the overrun and the pull-forward, and E01 keeps the last observed erosion (−75%) for November and December. The FX knowledge (E02) comes from the F126 and F226 rates.
+- **Impact per version.** For version V, an event's impact is the change in (actual − V) between the runs with and without the event. Against BUD26 that is the full effect. Against a forecast that knew the event it is small: E01 −333m vs BUD26, +0.3m vs FC226. E05 and E07 are unchanged against every version.
+- **Contract currency in plan mode too.** Vendors with `invoice_currency` are planned in that currency at the budget rate, so a forecast at F226 translates them exactly as the actuals do. Without this, E02 showed a false +15.7m against FC226; it is now +6.0m, which is the counterfactual's own CHF drift between June and Q3.
+- **E04a** posts the CHF 22m overrun as four monthly change orders in CHF (exact in local currency). A layer moves the 8m pull-forward out of P10-P12; FC226 plans both.
+- **E09** takes the 1.5m congress cost out of the March budget spend and books the invoice on 8 April with document date 18 March, without an accrual.
+- **E10** cuts ES10 transfer prices for IMMUVANT and LUMORA by 5%. CH10 loses exactly what ES10 gains, and the group effect is zero.
+- **E12** plants 25 overspends of USD 0.2-0.8m, each on a distinct cost center and account, below 3% of its company/period/P&L-line budget, and capped so that no company P&L line reaches the 2m absolute materiality YTD. NEURELIS actuals are held within ±1% of budget per company. V-09 checks all of this from the database.
+- **E02 and the R&D mix.** With E04a adding CHF cost, the R&D pool moved to 70% trials (mostly USD-billed): E02 is −32.7m (`ci`) and −38.1m (`dev`).
+- **V-07** now also checks group FY2025 net sales (±3%) and the FY2025 average FTE per company (±5%), on full-group profiles only.
+- **Period 13:** one bonus audit adjustment per company, dated 31 December 2025, entered in January 2026 before the period 13 close.
+- **Open:** the `full` profile has 78.6k lines against the approximate 350k-450k in §8.12. Weekly billing alone does not get there; it needs per-SKU deliveries or more customers.

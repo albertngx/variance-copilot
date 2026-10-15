@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, time
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -70,24 +70,58 @@ def plan_lines(
             total[0] += amount_lc
             total[1] += amount_lc * to_group
             total[2] += line.quantity or 0.0
+    return _rows(drivers.version, drivers.fiscal_year, totals, master)
+
+
+def _rows(
+    version: str,
+    year: int,
+    totals: Mapping[tuple[str | int | None, ...], Sequence[float | Decimal]],
+    master: Master,
+) -> list[Row]:
     rows = []
     for key, (amount_lc, amount_gc, quantity) in totals.items():
         if not cents(amount_lc):
             continue
         row: Row = dict(zip(DIMENSIONS, key, strict=True))
         row.update(
-            plan_category=drivers.version,
-            fiscal_year=drivers.fiscal_year,
+            plan_category=version,
+            fiscal_year=year,
             chart_of_accounts=CHART_OF_ACCOUNTS,
             amount_lc=cents(amount_lc),
             currency_lc=master.currency(str(key[0])),
             amount_gc=cents(amount_gc),
             currency_gc=GROUP_CURRENCY,
-            quantity=Decimal(repr(quantity)).quantize(MILLI) if quantity else None,
+            quantity=Decimal(quantity).quantize(MILLI) if quantity else None,
             unit="PK" if quantity else None,
         )
         rows.append(row)
     return rows
+
+
+def actual_rows(
+    version: str, year: int, through: int, lines: Iterable[Row], master: Master
+) -> list[Row]:
+    """Actual P&L lines up to the cut-off, copied into a forecast version as booked."""
+    totals: dict[tuple[str | int | None, ...], list[Decimal]] = defaultdict(
+        lambda: [Decimal(0), Decimal(0), Decimal(0)]
+    )
+    for line in lines:
+        if line["fiscal_year"] != year or line["period"] > through:
+            continue
+        if master.accounts[line["gl_account"]].account_type == "X":
+            continue
+        key: tuple[str | int | None, ...] = (
+            line["company_code"], line["period"], line["gl_account"], line["cost_center"],
+            line["profit_center"], line["functional_area"], line["segment"],
+            line["trading_partner"], line["material"], master.channel_of(line["customer"]),
+            line["wbs_element"],
+        )  # fmt: skip
+        total = totals[key]
+        total[0] += line["amount_lc"]
+        total[1] += line["amount_gc"]
+        total[2] += line["quantity"] or 0
+    return _rows(version, year, totals, master)
 
 
 def stat_key_figures(drivers: Drivers, master: Master, fte_per_head: Decimal) -> list[Row]:

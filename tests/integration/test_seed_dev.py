@@ -21,6 +21,7 @@ def test_dev_profile_passes_every_check_including_calibration(
 
     statuses = {c.check_id: c.status for c in result.checks}
     assert failures(result.checks) == []
-    assert statuses["V-07"] == "PASS"
+    assert statuses["V-07"] == statuses["V-09"] == "PASS"
     assert 50_000 <= result.counts["journal_line"] <= 70_000
-    assert result.manifest["events_pending"]  # dev lists events still to implement
+    assert result.manifest["events_pending"] == []
+    assert len(result.truths) == 13

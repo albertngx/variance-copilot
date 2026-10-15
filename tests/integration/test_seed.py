@@ -80,7 +80,7 @@ def test_ground_truth_and_truth_table(seeded: tuple[Connection, SeedResult, Path
     assert [e["event_id"] for e in truth["events"]] == ["E01", "E02", "E05", "E06", "E07"]
     assert {row.event_id for row in rows} == set(result.truths)
     for row in rows:
-        assert set(row.impact_by_version) == {"BUD26"}
+        assert set(row.impact_by_version) == {"BUD26", "FC126", "FC226"}
         for reference in row.documents:
             company_code, year, number = reference.split("/")
             found = conn.execute(
