@@ -1,6 +1,6 @@
 # 03 Finance engine
 
-**Status:** Design · **Spec:** §9 · **Backlog:** M2-01..M2-09
+**Status:** Partial (M2-01..M2-04 built) · **Spec:** §9 · **Backlog:** M2-01..M2-09
 
 ## Role
 
@@ -165,4 +165,50 @@ Flags for a human to check, never asserted as errors:
 
 ## Implementation notes
 
-_Nothing built yet._
+### Built so far
+
+M2-01..M2-04 on branch `e2-finance-core`: precision and formatting, periods and versions, constant currency, variance and materiality. Bridges, core reconciliation, outlook and anomalies (M2-05..M2-09) are not built yet.
+
+| Module | Task | Contents |
+| --- | --- | --- |
+| `finance/precision.py` | M2-01 | `FINANCE_CONTEXT` (28 digits, half-even), `@with_finance_context` |
+| `finance/formatting.py` | M2-01 | `format_amount`, `format_percent`, `format_pp`, `format_fte`, `format_rate` |
+| `finance/codes.py` | M2-02..04 | `WarningCode` (the five §10.1 warnings), `ErrorCode`, `FinanceError` |
+| `finance/periods.py` | M2-02 | `Period`, `ViewSelection`, `RangeSelection`, `resolve_periods`, `period_warnings` |
+| `finance/versions.py` | M2-02 | `PlanVersion`, `ResolvedVersion`, `resolve_version`, `latest_forecast` |
+| `finance/translation.py` | M2-03 | `FxRates`, `LocalAmount`, `constant_currency`, `fx_split` |
+| `finance/variance.py` | M2-04 | `variance`, `Magnitude` |
+| `finance/materiality.py` | M2-04 | `ScopeLevel`, `is_material`, `ranked`, `pareto` |
+| `finance/reference.py` | M2-02, M2-03 | Loaders for `fin.plan_version`, `fin.period_status`, `md.fx_rate` |
+
+The computing modules are pure; only `reference.py` touches the database, and it works under `vc_tool_reader` (integration-tested on the `ci` profile). This is how a `compare`-style tool (M2-12) will compose them:
+
+```mermaid
+flowchart LR
+  SEL["period selection,<br/>version tokens"] --> RP["resolve_periods"]
+  RP --> RV["resolve_version"]
+  REF[("plan_version<br/>period_status<br/>fx_rate")] --> RV
+  REF --> PW["period_warnings"]
+  REF --> FX["FxRates"]
+  ROWS["actual LC and GC by period,<br/>comparison GC"] --> SPLIT["fx_split"]
+  RV --> SPLIT
+  FX --> SPLIT
+  SPLIT --> VAR["variance"]
+  VAR --> MAT["is_material"]
+  VAR --> PAR["pareto"]
+```
+
+### Decisions
+
+- **Unit thresholds when formatting.** The unit comes from the unrounded magnitude; if rounding at that unit reaches 1,000, the next unit is used: 999,499 is `USD 999k`, 999,500 is `USD 1.0m`, 999,950,000 is `USD 1.00bn`. Rounding is half-up (away from zero) and happens only in `formatting.py`. A negative value that rounds to zero has no minus sign. FTE carry the suffix ` FTE`; amounts carry their currency code.
+- **One context.** Every engine function that multiplies, divides or rounds runs under `@with_finance_context`, so a caller that changed the thread's `Decimal` context cannot change results.
+- **Special periods.** `FY` always includes periods 13-16; `YTD` includes them only at period 12. The spec's "for closed years" is read as descriptive: special periods hold postings only once a year is closing, so including them for an open year changes nothing, and `PY` of an `FY` view then picks up the prior year's audit adjustment.
+- **Ranges** cover months 1-12 only and may cross a year end.
+- **`OPEN_PERIOD`** is raised when a requested period has an `OPEN` or `CLOSING` status for a company in scope. Periods without a status row (not opened yet) do not warn; the tool reports `NO_DATA` for them. Applying the warning to actuals only is the tool layer's job.
+- **Resolved versions** carry the periods to query and the rate type for constant currency: `AVG` for `ACT` and `PY` (`PY` shifts the periods back one year), the version's `fx_rate_type` for plans. `LATEST_FC` is the year's forecast with the highest `actuals_through_period`, ties broken by the latest `approved_at`. A plan version must cover exactly the requested fiscal year, otherwise `VERSION_PERIOD_MISMATCH`.
+- **Constant currency** translates each period's local amount at the comparison's rate for the matching period. USD lines contribute their booked group amount, so a USD entity's FX effect is exactly zero. A rate holds from `valid_from` until the next rate of its type (SAP `TCURR` semantics); no rate at all is `MISSING_FX_RATE`. `fx_split` does no rounding, so `Δ = Δ_op + FX` holds exactly (property-tested).
+- **`delta_pct` is in percent units** (`Δ / |C| × 100`), matching `PERCENT` facts (unit `%`) and `format_percent`. The materiality relative test is evaluated as `|Δ| ≥ relative × |C|`, which is the same rule without a division.
+- **Pareto coverage** is measured against the net variance of all contributors, as §9.7 says. With offsetting contributors (+50 and −40, net +10) the first one alone covers 500% and the drill-down stops there. When the net is zero, coverage is null and only the caps apply. Contributors below `min_contributor` are never returned; callers can raise `max_contributors` (`top_contributors` allows 20).
+- **Errors** are raised as `FinanceError(code, message)`; the tool framework (M2-11) turns them into `{error: {code, message}}`.
+
+No deviations from SPEC.md; the points above settle details the spec leaves open.

@@ -282,30 +282,30 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 #### M2-01 Decimal context and formatting
 - **Spec:** §9.10 · **Priority:** Must · **Size:** S · **Depends on:** M0-01
 - **Acceptance criteria**
-  - [ ] Shared `Decimal` context (28 digits); `ROUND_HALF_UP` only in formatting.
-  - [ ] Formatter covers bn/m/k/units, `%` (1 dp), `pp` (1 dp), FTE (whole), rates (4 dp), leading `−` and `abs`.
-  - [ ] Table-driven tests cover unit boundaries (e.g. how 999,950 rounds across the k/m threshold — rule documented), zero and negatives.
+  - [x] Shared `Decimal` context (28 digits); `ROUND_HALF_UP` only in formatting.
+  - [x] Formatter covers bn/m/k/units, `%` (1 dp), `pp` (1 dp), FTE (whole), rates (4 dp), leading `−` and `abs`.
+  - [x] Table-driven tests cover unit boundaries (e.g. how 999,950 rounds across the k/m threshold — rule documented), zero and negatives.
 
 #### M2-02 Periods and version resolution
 - **Spec:** §9.11, §7.9, §10.3 · **Priority:** Must · **Size:** M · **Depends on:** M1-06
 - **Acceptance criteria**
-  - [ ] MTD, QTD, YTD, FY and explicit ranges resolve to period lists; special periods only in FY and YTD P12.
-  - [ ] `LATEST_FC` resolves to the approved forecast with the highest `actuals_through_period`; `PY` to the same periods of the prior year.
-  - [ ] Any `OPEN`/`CLOSING` period produces `OPEN_PERIOD`.
+  - [x] MTD, QTD, YTD, FY and explicit ranges resolve to period lists; special periods only in FY and YTD P12.
+  - [x] `LATEST_FC` resolves to the approved forecast with the highest `actuals_through_period`; `PY` to the same periods of the prior year.
+  - [x] Any `OPEN`/`CLOSING` period produces `OPEN_PERIOD`.
 
 #### M2-03 Translation and constant currency
 - **Spec:** §9.2 · **Priority:** Must · **Size:** M · **Depends on:** M2-02
 - **Acceptance criteria**
-  - [ ] CC vs plan uses the version's rate type; CC vs PY uses prior-year `AVG` by month.
-  - [ ] Property test: `Δ_total = Δ_op + FX` for random inputs.
-  - [ ] USD entity: `A_cc = A_gc`, `FX = 0`.
+  - [x] CC vs plan uses the version's rate type; CC vs PY uses prior-year `AVG` by month.
+  - [x] Property test: `Δ_total = Δ_op + FX` for random inputs.
+  - [x] USD entity: `A_cc = A_gc`, `FX = 0`.
 
 #### M2-04 Variance core and materiality
 - **Spec:** §9.3, §9.7 · **Priority:** Must · **Size:** S · **Depends on:** M2-01
 - **Acceptance criteria**
-  - [ ] `Δ`, `Δ%` (null + `NO_COMPARISON_BASE` when `C = 0`), `favorable`, `magnitude` per §9.3.
-  - [ ] Materiality rule per §9.7 for group and company-code levels, read from `config/materiality.yaml`.
-  - [ ] Pareto drill-down respects `pareto_coverage`, `max_contributors`, `min_contributor`.
+  - [x] `Δ`, `Δ%` (null + `NO_COMPARISON_BASE` when `C = 0`), `favorable`, `magnitude` per §9.3.
+  - [x] Materiality rule per §9.7 for group and company-code levels, read from `config/materiality.yaml`.
+  - [x] Pareto drill-down respects `pareto_coverage`, `max_contributors`, `min_contributor`.
 
 #### M2-05 Revenue bridge
 - **Spec:** §9.4 · **Priority:** Must · **Size:** L · **Depends on:** M2-03
