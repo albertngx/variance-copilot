@@ -3,14 +3,23 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 
 import psycopg
 import pytest
 from hypothesis import HealthCheck, settings
+from sqlalchemy import Connection, create_engine, text
 
+from variance_copilot.config import load_materiality
+from variance_copilot.db import sqlalchemy_url
 from variance_copilot.db.migrate import upgrade
+from variance_copilot.generator.pipeline import Run, prepare
+from variance_copilot.generator.seed import run_seed
+from variance_copilot.tools.catalog import DATA_TOOLS
+from variance_copilot.tools.context import Principal, TransactionFactory
+from variance_copilot.tools.session import ToolSession
 
 LAYERS = ("unit", "property", "integration", "contract", "api", "security")
 TESTS_DIR = Path(__file__).parent
@@ -82,6 +91,75 @@ def fin_data(master_data: psycopg.Connection) -> psycopg.Connection:
     """Balanced revenue and expense documents, plan lines and FTEs for ES10 and US10."""
     master_data.execute(FIN_DATA_SQL)
     return master_data
+
+
+# --- Seeded ledgers and tool sessions --------------------------------------
+
+CI_SEED = 20261010
+
+
+@contextmanager
+def _seeded(url: str, run: Run, output: Path) -> Iterator[Connection]:
+    """A generated ledger loaded inside a transaction that is rolled back afterwards."""
+    engine = create_engine(sqlalchemy_url(url))
+    try:
+        with engine.connect() as conn:
+            transaction = conn.begin()
+            run_seed(conn, run, output)
+            yield conn
+            transaction.rollback()
+    finally:
+        engine.dispose()
+
+
+@pytest.fixture(scope="module")
+def ci_ledger(migrated_url: str, tmp_path_factory: pytest.TempPathFactory) -> Iterator[Connection]:
+    """The ci profile, seeded once per test module."""
+    output = tmp_path_factory.mktemp("generated")
+    with _seeded(migrated_url, prepare("ci", CI_SEED), output) as conn:
+        yield conn
+
+
+@pytest.fixture(scope="module")
+def seed_ledger(
+    migrated_url: str, tmp_path_factory: pytest.TempPathFactory
+) -> Callable[[Run], AbstractContextManager[Connection]]:
+    """Seed any run; use one at a time, since each holds its rows until it closes."""
+    return lambda run: _seeded(migrated_url, run, tmp_path_factory.mktemp("generated"))
+
+
+def savepoint_transactions(conn: Connection) -> TransactionFactory:
+    """Tool transactions on a seeded connection: tool role and scope, undone by a savepoint."""
+
+    @contextmanager
+    def transaction(company_scope: Sequence[str]) -> Iterator[Connection]:
+        savepoint = conn.begin_nested()
+        try:
+            conn.execute(text("SET LOCAL ROLE vc_tool_reader"))
+            conn.execute(
+                text("SELECT set_config('app.company_scope', :scope, true)"),
+                {"scope": ",".join(company_scope)},
+            )
+            yield conn
+        finally:
+            savepoint.rollback()
+
+    return transaction
+
+
+@pytest.fixture(scope="session")
+def reader_transactions() -> Callable[[Connection], TransactionFactory]:
+    return savepoint_transactions
+
+
+@pytest.fixture(scope="session")
+def tool_session() -> Callable[[Connection, Principal], ToolSession]:
+    """A data-tool session for a principal, reading a seeded connection."""
+
+    def make(conn: Connection, principal: Principal) -> ToolSession:
+        return ToolSession(DATA_TOOLS, principal, savepoint_transactions(conn), load_materiality())
+
+    return make
 
 
 MASTER_DATA_SQL = """
