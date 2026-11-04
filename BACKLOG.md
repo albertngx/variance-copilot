@@ -348,29 +348,29 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 #### M2-10 Fact ledger
 - **Spec:** §10.2, §7.10 `audit.fact` · **Priority:** Must · **Size:** M · **Depends on:** M1-05
 - **Acceptance criteria**
-  - [ ] Fact IDs `F<call>-<seq>`, unique per run; kinds and units per DDL.
-  - [ ] Variance facts carry `favorable` and `magnitude`; provenance includes tool call ID, tool, arguments SHA-256, row key, field.
+  - [x] Fact IDs `F<call>-<seq>`, unique per run; kinds and units per DDL.
+  - [x] Variance facts carry `favorable` and `magnitude`; provenance includes tool call ID, tool, arguments SHA-256, row key, field.
   - [ ] Facts persisted to `audit.fact` in the same transaction as the `FACTS_REGISTERED` event (once M5-01 exists).
 
 #### M2-11 Tool framework
 - **Spec:** §10.1, §10.3 (common types), §10.5 rule 1 · **Priority:** Must · **Size:** M · **Depends on:** M1-06, M2-10
 - Transport-agnostic tools: each is `(input: PydanticModel, ctx: ToolContext) -> PydanticModel`. Registry, common input models (`scope`, `period`, `currency_basis`, `basis`, versions), `ToolContext` (principal, company scope, roles, run ID, tool call ID), effective-scope echo, warnings, structured errors, limits, deterministic ordering. No MCP code here; M2-17 adapts the registry.
 - **Acceptance criteria**
-  - [ ] Tools are testable as plain functions with a `ToolContext`; no transport imports in `tools/`.
-  - [ ] Company scope is read only from `ToolContext`, never from tool inputs.
-  - [ ] Each call runs in its own RLS transaction; 10 s tool timeout.
-  - [ ] `GROUP` scope requires `group_analyst` and excludes trading-partner lines (I-06).
-  - [ ] Errors return `{error: {code, message}}`, never raise to the loop.
-  - [ ] Output order is stable (|Δ| desc, then key) — tested by running twice.
-  - [ ] No free-form SQL inputs anywhere.
+  - [x] Tools are testable as plain functions with a `ToolContext`; no transport imports in `tools/`.
+  - [x] Company scope is read only from `ToolContext`, never from tool inputs.
+  - [x] Each call runs in its own RLS transaction; 10 s tool timeout.
+  - [x] `GROUP` scope requires `group_analyst` and excludes trading-partner lines (I-06).
+  - [x] Errors return `{error: {code, message}}`, never raise to the loop.
+  - [x] Output order is stable (|Δ| desc, then key) — tested by running twice.
+  - [x] No free-form SQL inputs anywhere.
 
 #### M2-12 Data tools
 - **Spec:** §10.3, §10.4 · **Priority:** Must · **Size:** L · **Depends on:** M2-11, M2-02..04
 - `list_dimension_members`, `get_period_status`, `get_pnl`, `compare`, `journal_lines`, `get_fx_rates`.
 - **Acceptance criteria**
-  - [ ] `compare` output matches the §10.4 contract shape.
-  - [ ] `journal_lines` caps at 200 rows and sets `TRUNCATED`.
-  - [ ] `PARTIAL_SCOPE` when requested company codes exceed visible ones; `NO_DATA` on empty results.
+  - [x] `compare` output matches the §10.4 contract shape.
+  - [x] `journal_lines` caps at 200 rows and sets `TRUNCATED`.
+  - [x] `PARTIAL_SCOPE` when requested company codes exceed visible ones; `NO_DATA` on empty results.
 
 #### M2-13 Analysis tools
 - **Spec:** §10.3 · **Priority:** Must · **Size:** L · **Depends on:** M2-05..09, M2-11
@@ -382,9 +382,9 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 #### M2-14 RLS and access tests
 - **Spec:** §7.10, §13.6, §18.1 · **Priority:** Must · **Size:** M · **Depends on:** M2-12
 - **Acceptance criteria**
-  - [ ] ES10 analyst cannot see US10 rows through any tool, including via filters on account, document number or text search.
-  - [ ] Bypass attempts fail: `RESET ROLE`, `set_config` from tool inputs, SQL in string fields.
-  - [ ] Group totals exclude every trading-partner line; E10 shows zero group impact.
+  - [x] ES10 analyst cannot see US10 rows through any tool, including via filters on account, document number or text search.
+  - [x] Bypass attempts fail: `RESET ROLE`, `set_config` from tool inputs, SQL in string fields.
+  - [x] Group totals exclude every trading-partner line; E10 shows zero group impact.
 
 #### M2-15 Tool contract snapshots
 - **Spec:** §20 (contract), §10.5 rule 8 · **Priority:** Must · **Size:** S · **Depends on:** M2-12, M2-13, M2-17

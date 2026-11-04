@@ -27,7 +27,7 @@ flowchart LR
 | [01 Data model](01-data-model.md) | Ledger concepts, schemas, sign convention, row-level security | Product | Implemented |
 | [02 Synthetic data](02-synthetic-data.md) | Generator, planted scenario events, ground truth | Scaffolding | Implemented |
 | [03 Finance engine](03-finance-engine.md) | Variance, FX vs operational, bridges, materiality, anomalies | Product | Partial |
-| [04 Tools and fact ledger](04-tools-and-fact-ledger.md) | How numbers reach the model without the model typing them; MCP server | Product | Design |
+| [04 Tools and fact ledger](04-tools-and-fact-ledger.md) | How numbers reach the model without the model typing them; MCP server | Product | Partial |
 | [05 Agent](05-agent.md) | Q&A loop, commentary pipeline, LLM providers, replay | Product | Design |
 | [06 Guardrails](06-guardrails.md) | Placeholders, validators, scope, injection, fallback | Product | Design |
 | [07 Retrieval](07-retrieval.md) | Policy corpus, ingestion, hybrid search, citations | Product (corpus content is scaffolding) | Design |
