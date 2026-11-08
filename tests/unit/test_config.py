@@ -10,7 +10,7 @@ from variance_copilot.config import (
     AuthMode,
     ConfigError,
     Environment,
-    LLMProvider,
+    LLMProviderName,
     LogLevel,
     McpTransport,
     ReplayMode,
@@ -53,7 +53,7 @@ def test_defaults_match_spec() -> None:
 
     assert s.env is Environment.DEV
     assert s.database_url is None
-    assert s.llm_provider is LLMProvider.OPENAI
+    assert s.llm_provider is LLMProviderName.OPENAI
     assert s.llm_model is None
     assert s.judge_provider is None
     assert s.judge_model is None
@@ -91,7 +91,7 @@ def test_reads_prefixed_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
     assert s.env is Environment.CI
-    assert s.llm_provider is LLMProvider.REPLAY
+    assert s.llm_provider is LLMProviderName.REPLAY
     assert s.embedding_dim == 768
     assert s.store_llm_content is False
     assert s.database_url is not None
@@ -140,6 +140,11 @@ def test_oidc_requires_issuer_audience_and_jwks(monkeypatch: pytest.MonkeyPatch)
 def test_http_mcp_transport_requires_server_url(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(ValidationError, match="VC_MCP_SERVER_URL"):
         load_from_env(monkeypatch, VC_MCP_TRANSPORT="http")
+
+
+def test_record_mode_needs_a_live_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValidationError, match="VC_REPLAY_MODE=record needs a live"):
+        load_from_env(monkeypatch, VC_REPLAY_MODE="record", VC_LLM_PROVIDER="replay")
 
 
 # --- YAML files -----------------------------------------------------------

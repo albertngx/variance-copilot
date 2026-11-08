@@ -1,0 +1,12 @@
+{
+  "repair": {
+    "id": "repair",
+    "sha256": "89de38812e865a329ee63b5a33ef575bcd2a5905c05c91f4a635248eba70a3aa",
+    "version": 1
+  },
+  "system/qa": {
+    "id": "qa",
+    "sha256": "b2f320a2959819c3e16b68d48c99fce28d658791ff14df5034192b9ce993e47e",
+    "version": 1
+  }
+}

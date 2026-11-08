@@ -1,6 +1,6 @@
 # 05 Agent
 
-**Status:** Design · **Spec:** §6.2, §6.3, §12, §10.5 · **Backlog:** M3-01..M3-10, M6-05 · **Decisions:** [ADR-009](../docs/adr/0009-mcp-tool-layer.md)
+**Status:** Partial · **Spec:** §6.2, §6.3, §12, §10.5 · **Backlog:** M3-01..M3-10, M6-05 · **Decisions:** [ADR-009](../docs/adr/0009-mcp-tool-layer.md)
 
 ## Two modes
 
@@ -124,6 +124,75 @@ Never calculate; never type digits; always state scope; separate FX; explain mat
 
 ## Implementation notes
 
-_Nothing built yet. Open decision OD-1 (default model) is resolved in M3-02._
+### Built so far
+
+M3-01 (provider interface), M3-03 (replay and record), M3-04 (output schemas) and M3-05 (prompt management) on branch `e3-agent-groundwork`. Nothing here calls a live model. Next: the first live provider (M3-02, which also settles OD-1, the default model) and the loop (M3-06).
+
+| Module | Task | Contents |
+| --- | --- | --- |
+| `agent/providers/base.py` | M3-01 | §12.2 dataclasses (`ToolSpec`, `ToolCall`, `Message`, `Usage`, `Completion`), `LLMProvider` and `EmbeddingProvider` protocols, `ProviderError` |
+| `agent/providers/factory.py` | M3-01 | `make_llm_provider(settings)`; `LIVE_PROVIDERS` maps `VC_LLM_PROVIDER` values to live implementations (empty until M3-02) |
+| `agent/providers/replay.py` | M3-03 | `request_payload`, `request_sha256`, `CassetteStore`, `ReplayProvider`, `RecordingProvider`, `RecordingNotFoundError` |
+| `agent/schemas.py` | M3-04 | §12.4 `ScopeEcho`, `Driver`, `Answer`, `CommentarySection`, `Commentary`; `RESPONSE_MODELS` |
+| `agent/prompts.py` | M3-05 | `load_prompt(name)` returns a `Prompt` (front matter and template); `Prompt.render(**variables)` returns a `RenderedPrompt` (text and SHA-256) |
+| `prompts/system/qa.md`, `prompts/repair.md` | M3-05 | Q&A system prompt (the §12.5 draft, version 1) and the repair turn (variable `$violations`) |
+
+### Provider selection
+
+```mermaid
+flowchart TD
+  S["Settings"] --> M{"VC_LLM_MODEL set?"}
+  M -- no --> E1["ConfigError"]
+  M -- yes --> R{"VC_LLM_PROVIDER=replay<br/>or VC_REPLAY_MODE=replay?"}
+  R -- yes --> RP["ReplayProvider<br/>reads eval/cassettes"]
+  R -- no --> L{"Live provider<br/>implemented?"}
+  L -- no --> E2["ConfigError<br/>lists what is available"]
+  L -- yes --> REC{"VC_REPLAY_MODE=record?"}
+  REC -- yes --> RW["RecordingProvider<br/>wraps the live provider"]
+  REC -- no --> LIVE["Live provider"]
+```
+
+`VC_REPLAY_MODE=record` together with `VC_LLM_PROVIDER=replay` is rejected when settings load.
+
+### Cassettes
+
+```mermaid
+sequenceDiagram
+  participant Loop as Agent loop
+  participant Rec as RecordingProvider
+  participant Live as Live provider
+  participant Cas as eval/cassettes
+  participant Rep as ReplayProvider
+  Loop->>Rec: complete(messages, tools, params)
+  Rec->>Live: complete(...)
+  Live-->>Rec: Completion
+  Rec->>Cas: write <request sha256>.json.gz
+  Cas-->>Rec: decoded Completion
+  Rec-->>Loop: Completion
+  Note over Loop,Rep: later, in CI
+  Loop->>Rep: complete(same request)
+  Rep->>Cas: read <request sha256>.json.gz
+  Cas-->>Rep: same Completion, or RecordingNotFoundError
+  Rep-->>Loop: Completion
+```
+
+- **Request key:** SHA-256 of the canonical JSON (sorted keys, no whitespace, UTF-8) of `{model, messages, tools, parameters: {response_schema, temperature, max_output_tokens}}`. `model` is `VC_LLM_MODEL`. Temperature is converted to a float, so `0` and `0.0` give the same key.
+- **The timeout is not in the key:** it does not change what the model returns, and changing a timeout should not invalidate recordings.
+- **One file per request:** `eval/cassettes/<sha256>.json.gz` holds `{format, request_sha256, request, completion}`. The request is stored so an old recording can be diffed against a new request. Gzip is written with `mtime=0`, so re-recording an identical response gives identical bytes and no git diff. Files are written to a temporary file and moved into place with `os.replace`.
+- **Record returns what replay will:** `RecordingProvider` always calls the live model (re-recording overwrites the file) and returns the completion as read back from the cassette. A record run and a later replay run therefore see identical objects (for example, JSON lists rather than tuples inside `raw`).
+- **Per-case folders:** the eval runner (M7) can pass one sub-folder per golden case as `cassettes`; the store works the same either way.
+- **Failures:** a missing recording raises `RecordingNotFoundError` with the request hash, the model and how to re-record. A corrupt cassette, one in another format, or one saved under the wrong name raises `ProviderError`.
+
+### Schemas and prompts
+
+- **Output models reject unknown fields** (`extra="forbid"`). The exported JSON schemas therefore carry `additionalProperties: false`, as structured-output APIs expect, and a stray field fails validation instead of being silently dropped. Otherwise the models are §12.4 as written.
+- **Contract snapshots:** `tests/contract/snapshots/agent_output_schemas.json` (`Answer` and `Commentary`, with `ScopeEcho` and `Driver` under `$defs`) and `prompts.json` (id, version and SHA-256 per prompt file). `make snapshots` refuses to record a prompt whose text changed without a new `version`. All contract tests share the `snapshot` fixture in `tests/contract/conftest.py`.
+- **Prompt variables use `$name`** (`string.Template`), because `{{...}}` already means a fact placeholder in prompt text. A literal dollar sign is written `$$`; a stray `$` fails at load. Rendering needs exactly the template's variables, no more and no fewer.
+- **Front matter:** `id` (must equal the file name), `version`, `owner`, and `changelog` (must have an entry for the current version). The SHA-256 covers only the rendered text, trimmed of surrounding blank lines, so editing the front matter does not change it.
+- **Storing the SHA on every run** belongs to M3-06, which creates the `app.run` row and the `RUN_STARTED` event.
+- **Config:** the enum of provider names is now `LLMProviderName` (it was `LLMProvider`), so the §12.2 protocol keeps its spec name.
+
+### History
 
 - 2026-10-12 — ADR-009: tool calls go through an MCP client session, not direct function calls.
+- 2026-11-08 — Provider interface, replay and record, output schemas and prompt management built (M3-01, M3-03..M3-05).

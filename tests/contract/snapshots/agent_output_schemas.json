@@ -1,0 +1,382 @@
+{
+  "Answer": {
+    "$defs": {
+      "Driver": {
+        "additionalProperties": false,
+        "properties": {
+          "citation_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Citation Ids",
+            "type": "array"
+          },
+          "classification": {
+            "enum": [
+              "VOLUME",
+              "PRICE",
+              "MIX",
+              "GTN",
+              "GTN_PRIOR_PERIOD",
+              "FX",
+              "LOSS_OF_EXCLUSIVITY",
+              "LAUNCH",
+              "TIMING",
+              "ONE_OFF",
+              "MISPOSTING",
+              "RESTRUCTURING",
+              "CORE_ADJUSTMENT",
+              "INTERCOMPANY",
+              "PERSONNEL",
+              "OTHER"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
+          "evidence_fact_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Fact Ids",
+            "type": "array"
+          },
+          "impact_fact_id": {
+            "title": "Impact Fact Id",
+            "type": "string"
+          },
+          "narrative": {
+            "description": "Text with {{fact}} placeholders only",
+            "maxLength": 800,
+            "title": "Narrative",
+            "type": "string"
+          },
+          "recurrence": {
+            "enum": [
+              "RECURRING",
+              "NON_RECURRING",
+              "TIMING",
+              "UNKNOWN"
+            ],
+            "title": "Recurrence",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 120,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "impact_fact_id",
+          "classification",
+          "narrative",
+          "recurrence"
+        ],
+        "title": "Driver",
+        "type": "object"
+      },
+      "ScopeEcho": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "enum": [
+              "IFRS",
+              "CORE"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "company_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Company Codes",
+            "type": "array"
+          },
+          "comparison": {
+            "title": "Comparison",
+            "type": "string"
+          },
+          "currency_basis": {
+            "enum": [
+              "GC",
+              "LC",
+              "CC"
+            ],
+            "title": "Currency Basis",
+            "type": "string"
+          },
+          "period_label": {
+            "title": "Period Label",
+            "type": "string"
+          },
+          "preliminary": {
+            "default": false,
+            "title": "Preliminary",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "company_codes",
+          "period_label",
+          "comparison",
+          "currency_basis",
+          "basis"
+        ],
+        "title": "ScopeEcho",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "caveats": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "title": "Caveats",
+        "type": "array"
+      },
+      "citation_ids": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "title": "Citation Ids",
+        "type": "array"
+      },
+      "drivers": {
+        "items": {
+          "$ref": "#/$defs/Driver"
+        },
+        "maxItems": 8,
+        "title": "Drivers",
+        "type": "array"
+      },
+      "follow_up_questions": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 3,
+        "title": "Follow Up Questions",
+        "type": "array"
+      },
+      "headline": {
+        "maxLength": 300,
+        "title": "Headline",
+        "type": "string"
+      },
+      "scope": {
+        "$ref": "#/$defs/ScopeEcho"
+      }
+    },
+    "required": [
+      "headline",
+      "scope",
+      "drivers"
+    ],
+    "title": "Answer",
+    "type": "object"
+  },
+  "Commentary": {
+    "$defs": {
+      "CommentarySection": {
+        "additionalProperties": false,
+        "properties": {
+          "drivers": {
+            "items": {
+              "$ref": "#/$defs/Driver"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "section": {
+            "enum": [
+              "SUMMARY",
+              "NET_SALES",
+              "GROSS_MARGIN",
+              "SELLING_MARKETING",
+              "RESEARCH_DEVELOPMENT",
+              "GENERAL_ADMIN",
+              "OTHER_OPERATING",
+              "CORE_RECONCILIATION",
+              "OUTLOOK"
+            ],
+            "title": "Section",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section",
+          "headline",
+          "drivers"
+        ],
+        "title": "CommentarySection",
+        "type": "object"
+      },
+      "Driver": {
+        "additionalProperties": false,
+        "properties": {
+          "citation_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Citation Ids",
+            "type": "array"
+          },
+          "classification": {
+            "enum": [
+              "VOLUME",
+              "PRICE",
+              "MIX",
+              "GTN",
+              "GTN_PRIOR_PERIOD",
+              "FX",
+              "LOSS_OF_EXCLUSIVITY",
+              "LAUNCH",
+              "TIMING",
+              "ONE_OFF",
+              "MISPOSTING",
+              "RESTRUCTURING",
+              "CORE_ADJUSTMENT",
+              "INTERCOMPANY",
+              "PERSONNEL",
+              "OTHER"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
+          "evidence_fact_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Fact Ids",
+            "type": "array"
+          },
+          "impact_fact_id": {
+            "title": "Impact Fact Id",
+            "type": "string"
+          },
+          "narrative": {
+            "description": "Text with {{fact}} placeholders only",
+            "maxLength": 800,
+            "title": "Narrative",
+            "type": "string"
+          },
+          "recurrence": {
+            "enum": [
+              "RECURRING",
+              "NON_RECURRING",
+              "TIMING",
+              "UNKNOWN"
+            ],
+            "title": "Recurrence",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 120,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "impact_fact_id",
+          "classification",
+          "narrative",
+          "recurrence"
+        ],
+        "title": "Driver",
+        "type": "object"
+      },
+      "ScopeEcho": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "enum": [
+              "IFRS",
+              "CORE"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "company_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Company Codes",
+            "type": "array"
+          },
+          "comparison": {
+            "title": "Comparison",
+            "type": "string"
+          },
+          "currency_basis": {
+            "enum": [
+              "GC",
+              "LC",
+              "CC"
+            ],
+            "title": "Currency Basis",
+            "type": "string"
+          },
+          "period_label": {
+            "title": "Period Label",
+            "type": "string"
+          },
+          "preliminary": {
+            "default": false,
+            "title": "Preliminary",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "company_codes",
+          "period_label",
+          "comparison",
+          "currency_basis",
+          "basis"
+        ],
+        "title": "ScopeEcho",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "anomalies_to_review": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "title": "Anomalies To Review",
+        "type": "array"
+      },
+      "scope": {
+        "$ref": "#/$defs/ScopeEcho"
+      },
+      "sections": {
+        "items": {
+          "$ref": "#/$defs/CommentarySection"
+        },
+        "title": "Sections",
+        "type": "array"
+      }
+    },
+    "required": [
+      "scope",
+      "sections"
+    ],
+    "title": "Commentary",
+    "type": "object"
+  }
+}
