@@ -156,6 +156,8 @@ flowchart TD
 
 ### Cassettes
 
+Plain-language walkthrough with a worked example: [docs/record-and-replay.md](../docs/record-and-replay.md).
+
 ```mermaid
 sequenceDiagram
   participant Loop as Agent loop
