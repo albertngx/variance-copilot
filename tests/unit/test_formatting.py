@@ -9,6 +9,7 @@ from variance_copilot.finance.formatting import (
     format_fte,
     format_percent,
     format_pp,
+    format_quantity,
     format_rate,
 )
 from variance_copilot.finance.precision import PRECISION, with_finance_context
@@ -98,6 +99,16 @@ def test_percentage_points_one_decimal(value: str, expected: str) -> None:
 )
 def test_fte_whole_numbers(value: str, expected: str) -> None:
     assert format_fte(Decimal(value)) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "unit", "expected"),
+    [("1234567.4", "PC", "1,234,567 PC"), ("12", "", "12"), ("-2.5", "", f"{M}3")],
+)
+def test_quantities_whole_numbers_with_an_optional_unit(
+    value: str, unit: str, expected: str
+) -> None:
+    assert format_quantity(Decimal(value), unit) == expected
 
 
 @pytest.mark.parametrize(

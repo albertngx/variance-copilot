@@ -5,7 +5,7 @@
 | **Source** | [SPEC.md](SPEC.md) v1.1 (section references are `§n`) |
 | **Decisions** | [ADR-009](docs/adr/0009-mcp-tool-layer.md) MCP tool layer; [ADR-011](docs/adr/0011-reject-identity-in-tool-arguments.md) identity fields in tool arguments rejected; [ADR-012](docs/adr/0012-bedrock-haiku-default-model.md) Bedrock with Claude Haiku 5.5 |
 | **Structure** | One epic per milestone (§28.1); tasks are `M<epic>-<nn>` |
-| **Last updated** | 2026-11-08 (ADR-012, OD-1) |
+| **Last updated** | 2026-11-08 (ADR-012, M3-07) |
 
 ## How to read this
 
@@ -484,10 +484,10 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 #### M3-07 Renderer
 - **Spec:** §13.1, §11.7, §14 rule 6, Appendix C · **Priority:** Must · **Size:** M · **Depends on:** M2-01, M3-04
 - **Acceptance criteria**
-  - [ ] Placeholders `{{F}}`, `|abs`, `|pct`, `|abspct`, `|pp` render per §9.10; incompatible modifier is an error.
-  - [ ] Citations render as `(POL-005 §4.2)`.
-  - [ ] Rendered Markdown matches the Appendix C layout (headline, scope line, numbered drivers, caveats, footer label).
-  - [ ] Placeholder-to-text mapping returned for the `VALIDATION` event.
+  - [x] Placeholders `{{F}}`, `|abs`, `|pct`, `|abspct`, `|pp` render per §9.10; incompatible modifier is an error.
+  - [x] Citations render as `(POL-005 §4.2)` (chunk details supplied by retrieval, M4-08).
+  - [x] Rendered Markdown matches the Appendix C layout (headline, scope line, numbered drivers, caveats, footer label).
+  - [x] Placeholder-to-text mapping returned for the `VALIDATION` event.
 
 #### M3-08 `vc ask` and dev users
 - **Spec:** §17, §25 · **Priority:** Must · **Size:** S · **Depends on:** M3-06, M3-07

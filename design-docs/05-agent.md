@@ -127,7 +127,7 @@ Never calculate; never type digits; always state scope; separate FX; explain mat
 
 ### Built so far
 
-M3-01 (provider interface), M3-03 (replay and record), M3-04 (output schemas) and M3-05 (prompt management) on branch `e3-agent-groundwork`. Nothing here calls a live model. OD-1 is settled by ADR-012 (Bedrock, Claude Haiku 5.5); the Bedrock provider itself (M3-02) waits for AWS access. Next: the renderer (M3-07) and the loop (M3-06).
+M3-01 (provider interface), M3-03 (replay and record), M3-04 (output schemas) and M3-05 (prompt management) on branch `e3-agent-groundwork`. Nothing here calls a live model. OD-1 is settled by ADR-012 (Bedrock, Claude Haiku 5.5); the Bedrock provider itself (M3-02) waits for AWS access. The renderer (M3-07) followed on branch `e3-renderer`. Next: the loop (M3-06).
 
 | Module | Task | Contents |
 | --- | --- | --- |
@@ -137,6 +137,8 @@ M3-01 (provider interface), M3-03 (replay and record), M3-04 (output schemas) an
 | `agent/schemas.py` | M3-04 | §12.4 `ScopeEcho`, `Driver`, `Answer`, `CommentarySection`, `Commentary`; `RESPONSE_MODELS` |
 | `agent/prompts.py` | M3-05 | `load_prompt(name)` returns a `Prompt` (front matter and template); `Prompt.render(**variables)` returns a `RenderedPrompt` (text and SHA-256) |
 | `prompts/system/qa.md`, `prompts/repair.md` | M3-05 | Q&A system prompt (the §12.5 draft, version 1) and the repair turn (variable `$violations`) |
+| `agent/renderer.py` | M3-07 | `render_answer(answer, facts, run_id=, citations=)` returns `RenderedAnswer` (Markdown and placeholder mapping); `TOKEN`, `parse_placeholder`, `ALLOWED_KINDS` for the validator; `CitedChunk`, `RenderError` |
+| `finance/formatting.py` | M3-07 | `format_quantity` added (whole number and optional unit); `format_fte` uses it |
 
 ### Provider selection
 
@@ -195,8 +197,30 @@ sequenceDiagram
 - **Storing the SHA on every run** belongs to M3-06, which creates the `app.run` row and the `RUN_STARTED` event.
 - **Config:** the enum of provider names is now `LLMProviderName` (it was `LLMProvider`), so the §12.2 protocol keeps its spec name.
 
+### Renderer
+
+```mermaid
+flowchart LR
+  A["Answer<br/>(validated JSON)"] --> R["render_answer"]
+  L[("FactLedger<br/>of the run")] --> R
+  C["CitedChunk per chunk ID<br/>(from retrieval, M4-08)"] --> R
+  R --> MD["Markdown<br/>(Appendix C layout)"]
+  R --> MAP["placeholder → text<br/>(VALIDATION event)"]
+```
+
+- **Strict placeholder grammar:** `{{F<call>-<seq>}}` with an optional `|abs`, `|pct`, `|abspct` or `|pp`. Anything else inside double braces, spaces included, and any unmatched `{{` or `}}` raise `RenderError`. The grounding validator (M5-03) reuses `TOKEN`, `parse_placeholder` and `ALLOWED_KINDS`, so it accepts exactly what the renderer can render.
+- **Modifiers and kinds** follow the §13.1 table; values use the M2-01 formatters. A QUANTITY renders as a whole number with its unit (`12 FTE`); a COUNT as a whole number without one.
+- **Driver impact** appears in the driver title in the fact's own signed format: an amount as `{{F}}`, a percentage as `|pct`, percentage points as `|pp`. It is recorded in the mapping under that token, so every number in the Markdown is in the mapping (the rendered-number grounding metric, §19).
+- **Citations:** the caller passes a `CitedChunk(doc_id, section_path)` per chunk ID retrieved in the run (built by M4-08). The label is the document ID, `§` and the last element of the section path: `POL-005 §4.2 Capitalisation`, matching §11.7 and Appendix C. A driver's citations share one parenthesis, separated by `;`. Answer-level citations that no driver shows go on a `Sources:` line, which policy answers without drivers need; Appendix C does not show that case. An unknown chunk ID raises `RenderError`.
+- **Scope line:** `GC` renders as `USD`, `LC` as "local currency", `CC` as "constant currency", `CORE` as "core"; "preliminary" is appended when set.
+- **Period ranges** the model writes with a hyphen (`P01-P09`) render with an en dash, as in Appendix C. Other hyphens and dates are left alone.
+- **Footer:** Appendix C's `{run_id}` is filled in with the full run ID, so the facts endpoint can be called as shown; the label keeps the short form (`run 3f6c…`).
+- **Not rendered:** follow-up questions (Appendix C's rendered output omits them; they stay in the structured answer and `vc ask --json`). Commentary rendering and its "AI-generated draft" label (§14 rule 6) come with the commentary pipeline (M6-05).
+- In a normal run the validator (M5-03) catches bad placeholders first and triggers the repair turn; a `RenderError` after validation means a bug.
+
 ### History
 
 - 2026-10-12 — ADR-009: tool calls go through an MCP client session, not direct function calls.
 - 2026-11-08 — Provider interface, replay and record, output schemas and prompt management built (M3-01, M3-03..M3-05).
 - 2026-11-08 — ADR-012: Bedrock with Claude Haiku 5.5 is the default model; `VC_LLM_PROVIDER` defaults to `bedrock`.
+- 2026-11-08 — Renderer built (M3-07).
