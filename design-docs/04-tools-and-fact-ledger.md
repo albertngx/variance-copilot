@@ -1,6 +1,6 @@
 # 04 Tools and fact ledger
 
-**Status:** Partial (M2-10..M2-12, M2-14 built) · **Spec:** §10 · **Backlog:** M2-10..M2-19 · **Decisions:** [ADR-009](../docs/adr/0009-mcp-tool-layer.md)
+**Status:** Partial (M2-10..M2-12, M2-14, M2-15, M2-17 built) · **Spec:** §10 · **Backlog:** M2-10..M2-19 · **Decisions:** [ADR-009](../docs/adr/0009-mcp-tool-layer.md), [ADR-011](../docs/adr/0011-reject-identity-in-tool-arguments.md)
 
 ## The key idea
 
@@ -127,7 +127,7 @@ flowchart LR
 **How the pieces fit**
 
 - **Tools don't know about MCP.** Each is a plain function: typed input + `ToolContext` in, typed result out. That keeps them easy to unit-test. The MCP server wraps them and generates the schemas clients see from the same Pydantic models.
-- **Identity comes from the connection, never the request.** In-process, the agent's session is bound to the user the API already verified. Remotely, `/mcp` checks an OAuth bearer token, the same one the REST API accepts. A client that puts `company_scope: ["US10"]` in its arguments is ignored.
+- **Identity comes from the connection, never the request.** In-process, the agent's session is bound to the user the API already verified. Remotely, `/mcp` checks an OAuth bearer token, the same one the REST API accepts. A client that puts `company_scope: ["US10"]` in its arguments gets `INVALID_ARGUMENTS`; the same key in the request's `_meta` is simply never read (ADR-011).
 - **A remote session is a run.** It gets its own `app.run` (kind `MCP_SESSION`), fact IDs and audit events, which record which client called (e.g. "Claude 1.x").
 - **Results are structured.** Each tool returns machine-readable content (rows, fact IDs, facts, scope, warnings) plus a one-line text summary, and is marked read-only.
 
@@ -159,7 +159,7 @@ Our guardrails only check text **our** agent writes. If Claude or Copilot calls 
 
 ### Built so far
 
-M2-10 (fact ledger, without persistence), M2-11 (tool framework), M2-12 (data tools) and M2-14 (access tests) on branch `e2-tools`. The MCP server (M2-17), contract snapshots (M2-15) and the analysis tools (M2-13) are next.
+M2-10 (fact ledger, without persistence), M2-11 (tool framework), M2-12 (data tools), M2-14 (access tests), M2-17 (MCP server and in-process client) and M2-15 (contract snapshot, data tools so far) on branch `e2-tools`. The analysis tools (M2-13) are next on the tool side; each one regenerates the snapshot.
 
 | Module | Task | Contents |
 | --- | --- | --- |
@@ -174,6 +174,10 @@ M2-10 (fact ledger, without persistence), M2-11 (tool framework), M2-12 (data to
 | `tools/measure.py` | M2-12 | `get_pnl`, `compare` |
 | `tools/evidence.py` | M2-12 | `journal_lines` |
 | `tools/catalog.py` | M2-12 | `DATA_TOOLS`, the registry with the public names and descriptions |
+| `mcp/server.py` | M2-17 | `build_server(registry, resolve_session)`, `tool_definition`, `call_result`, `INSTRUCTIONS` |
+| `mcp/client.py` | M2-17 | `open_tool_client(session)`: a connected `mcp.Client` bound to one run's session |
+| `mcp/summary.py` | M2-17 | The one-line text summary that goes with each structured result |
+| `tests/contract/snapshots/mcp_tools_list.json` | M2-15 | The reviewed `tools/list` contract: server name, instructions, every tool |
 
 ```mermaid
 sequenceDiagram
@@ -195,10 +199,10 @@ sequenceDiagram
 
 ### Decisions
 
-- **One session per run.** `ToolSession` numbers calls (`tc-1`, `tc-2`, ...), opens one RLS transaction per call and keeps the run's `FactLedger`. A failed call still uses a number, and its facts are discarded.
+- **One session per run.** `ToolSession` numbers calls (`tc-1`, `tc-2`, ...), opens one RLS transaction per call and keeps the run's `FactLedger`. A failed call still uses a number, and its facts are discarded. Calls hold a lock, so concurrent callers (the MCP server runs each call on a worker thread) run one at a time and the numbering stays deterministic for replay.
 - **The database scope is the principal's, never the input's.** The session sets `app.company_scope` to the principal's company codes. Tools also filter SQL to the effective scope, which is the requested codes that the principal may see. Only codes outside scope gives `NO_ACCESS`; some outside gives `PARTIAL_SCOPE`. The `group` claim expands to every company code (`Principal.from_claims`).
 - **Roles.** Tools need `analyst`, `reviewer` or `group_analyst`; `auditor` and `admin` get `FORBIDDEN`. `GROUP` scope needs `group_analyst`, covers every company code, rejects `company_codes`, and excludes every line with a trading partner (I-06), the same rule the generator's ground truth uses.
-- **Strict inputs.** Input models forbid unknown fields, so `company_scope`, `roles` or `run_id` in arguments are rejected with `INVALID_ARGUMENTS` rather than silently ignored. Every string is an enum or a pattern, except two bounded search texts (`journal_lines.text`, `list_dimension_members.filter`) that are bound parameters with `%` and `_` escaped. `group_by` maps an enum to a column name in code; no identifier comes from input. A unit test walks every input schema to enforce this.
+- **Strict inputs.** Input models forbid unknown fields, so `company_scope`, `roles` or `run_id` in arguments are rejected with `INVALID_ARGUMENTS` rather than silently ignored ([ADR-011](../docs/adr/0011-reject-identity-in-tool-arguments.md) aligns SPEC §10.5 with this). Every string is an enum or a pattern, except two bounded search texts (`journal_lines.text`, `list_dimension_members.filter`) that are bound parameters with `%` and `_` escaped. `group_by` maps an enum to a column name in code; no identifier comes from input. A unit test walks every input schema to enforce this.
 - **Versions are an enum** (`ACT`, `PY`, `LATEST_FC`, `BUD25`, `BUD26`, `FC126`, `FC226`), as §10.1 rule 2 asks. A new plan version is therefore a contract change.
 - **10-second tool timeout.** `deadline()` hooks every statement on the call's connection and sets its `statement_timeout` to the smaller of 5 s and the time left; once the budget is used up, the next statement is refused. Both paths return `TIMEOUT`.
 - **Errors as data.** `FinanceError` keeps its code (`NO_FORECAST`, `MISSING_FX_RATE`, ...); validation errors become `INVALID_ARGUMENTS` without echoing the input; anything unexpected is logged and returned as `INTERNAL_ERROR` with a generic message.
@@ -208,14 +212,55 @@ sequenceDiagram
 - **`journal_lines`** returns P&L lines only (`rpt.pnl_actual` joined with the header), with GC and LC amounts as facts, largest first, at most 200.
 - **`list_dimension_members`** limits company-bound dimensions (company codes, cost centers, WBS elements) to the principal's companies; brands, accounts and other global master data are unrestricted.
 
+### MCP server and contract snapshot (M2-17, M2-15)
+
+The server is a thin adapter: it lists the registry and forwards each call to a `ToolSession`. It is not a web server. In-process, `mcp.Client(server)` talks to it directly; M2-18 will serve the same `Server` over streamable HTTP as a Starlette app mounted at `/mcp`.
+
+```mermaid
+sequenceDiagram
+  participant O as Orchestrator (M3)
+  participant C as mcp.Client
+  participant M as MCP server
+  participant W as Worker thread
+  participant S as The run's ToolSession
+  O->>C: open_tool_client(session)
+  O->>C: call_tool("compare", arguments)
+  C->>M: tools/call (direct dispatch, or JSON-RPC in legacy mode)
+  M->>M: resolve_session(ctx) gives the run's session,<br/>never anything from arguments or _meta
+  M->>W: to_thread.run_sync(session.call, name, arguments)
+  W->>S: call, holding the session lock
+  S-->>M: result, or {error: {code, message}}
+  M-->>C: structuredContent + summary text,<br/>isError for tool errors
+  C->>C: check structuredContent against outputSchema
+  C-->>O: CallToolResult
+  Note over O,S: The renderer reads facts from session.ledger,<br/>not from the copy that came back over MCP
+```
+
+**Decisions**
+
+- **SDK 2.x, low-level `Server`.** Built on MCP Python SDK 2.3 (the 2.0 line shipped in August 2026, after ADR-009 was written). `MCPServer` (FastMCP in 1.x) infers schemas from function signatures; the low-level server takes our registry, schemas and error mapping as they are, so tools are declared once.
+- **The session comes from a resolver, not the request.** `build_server(registry, resolve_session)` asks `resolve_session(ctx)` for the `ToolSession` on every call. In-process the resolver returns the run's session, so the binding is structural. M2-18 swaps in a resolver that finds the session from the verified token. `tools/list` needs only the registry, so the contract test runs without a database or principal.
+- **Schemas.** `inputSchema` is the input model's JSON Schema in validation mode; `outputSchema` uses serialization mode, so `Decimal` values are strings, as `model_dump(mode="json")` sends them. Every tool has `readOnlyHint: true`.
+- **Errors.** A `ToolErrorResult` comes back as a normal `CallToolResult` with `isError: true` and `{tool_call_id, error: {code, message}}` as structured content, never a JSON-RPC error. The SDK client skips output-schema checks for `isError` results, so error payloads need no place in the output schema. Unknown tools are reported the same way, which keeps one error path for the agent loop.
+- **Text summary without figures.** The text block reads like `compare tc-1: rows=12, facts=74; scope US10 2026-01..2026-09 ACT vs BUD26 GC IFRS`. It has counts, scope and warnings but no values, so a client that reads only text still cannot copy a number. The MCP spec suggests also sending the JSON as text for older clients; the backlog asked for a short summary instead, and current clients read `structuredContent`.
+- **Worker threads.** `ToolSession.call` is synchronous SQLAlchemy, so the async handler runs it with `anyio.to_thread.run_sync` instead of blocking the event loop for up to 10 s.
+- **Server instructions** state that every number is a fact, that scope comes from identity, and that text written from these results is not validated by our guardrails (§10.5 rule 6). They are part of the snapshot.
+- **Connect modes.** `open_tool_client` defaults to the SDK's direct in-process dispatch (protocol 2026-07-28). `mode="legacy"` sends JSON-RPC over memory streams with the initialize handshake (protocol 2025-11-25); the integration test uses it for the direct-call comparison, so the serialization round trip is covered.
+- **Snapshot.** `tests/contract/test_mcp_contract.py` lists tools through a real client and compares server name, instructions and tools with `mcp_tools_list.json`. Keys are sorted, because the two connect modes order schema keys differently. A difference fails with a unified diff; `make snapshots` (`pytest --update-snapshots`) rewrites the file and is refused when `CI` is set, so every contract change shows up in a PR diff. Contract tests need no database and run in the fast CI job.
+
 ### Not done yet
 
 - Persisting facts to `audit.fact` with the `FACTS_REGISTERED` event waits for the audit writer (M5-01), as the M2-10 criterion states.
+- Remote `/mcp` (M2-18). The 2026-07-28 MCP protocol revision is largely stateless (`server/discover` replaces the initialize handshake), which weakens ADR-009's "a remote session is a run"; that design needs another look, likely an ADR, before M2-18.
 
 ### Test coverage
 
 - Unit: fact numbering, provenance and scale; scope rules; session error mapping, numbering and timeout (on SQLite); a schema walk proving there are no free-text inputs except the two search fields; no transport imports in `tools/`.
 - Integration (`ci` profile): the §10.4 contract shape with values checked against direct SQL; repeatable output; `Δ = Δ_op + FX` on every row; LC, PY, CORE, period grouping; journal-line cap and filters; `PARTIAL_SCOPE`, `NO_DATA`, `OPEN_PERIOD`; FX rates and period status; the deadline cancelling a running statement.
 - Security (M2-14): an ES10 analyst sees no US10 rows through any tool or filter (document number, account, text); SQL payloads in free text are only text; SQL or scope in structured fields is rejected; tools run as `vc_tool_reader` with the principal's scope even after injection attempts; group totals equal third-party lines; and seeding `ci` with and without E10 gives identical group figures while ES10's change.
+- MCP unit (M2-17, both connect modes, SQLite session): `tools/list` shows every `DATA_TOOLS` tool with schemas equal to its models', `readOnlyHint` and the instructions; a call returns structured content, a summary without figures and facts in the server-side ledger; `NO_FORECAST`, `UNKNOWN_TOOL` and `INVALID_ARGUMENTS` arrive as `isError` results; scope, roles and run IDs in `_meta` change nothing; the same keys in arguments are rejected before any transaction; eight concurrent calls never overlap and get `tc-1`..`tc-8` (the test fails with the lock removed).
+- MCP integration (`ci` profile): `compare` through the client equals a direct `ToolSession.call`; all six data tools pass the client's output-schema check in both connect modes.
+- Contract (M2-15): the served `tools/list` matches the reviewed snapshot.
 
 - 2026-10-12 — [ADR-009](../docs/adr/0009-mcp-tool-layer.md): tools exposed through an MCP server; the orchestrator is an MCP client (in-memory transport). Moved from post-v1 roadmap into M2 (tasks M2-17..19).
+- 2026-11-08 — M2-17 and M2-15 built on MCP Python SDK 2.3. [ADR-011](../docs/adr/0011-reject-identity-in-tool-arguments.md): scope and run identifiers in tool arguments are rejected, in `_meta` ignored.

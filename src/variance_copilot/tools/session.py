@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -73,7 +74,7 @@ def _timed_out(error: BaseException) -> bool:
 
 
 class ToolSession:
-    """One run's tool calls: numbering, one RLS transaction per call, limits, fact ledger."""
+    """One run's tool calls, one at a time: numbering, one RLS transaction each, fact ledger."""
 
     def __init__(
         self,
@@ -93,9 +94,16 @@ class ToolSession:
         self._materiality = materiality
         self._timeout = timeout
         self._calls = 0
+        self._lock = threading.Lock()
 
     def call(self, name: str, arguments: Mapping[str, Any]) -> ToolResult | ToolErrorResult:
         """Run a tool; failures come back as ``{error: {code, message}}``, never as exceptions."""
+        with self._lock:
+            return self._numbered_call(name, arguments)
+
+    def _numbered_call(
+        self, name: str, arguments: Mapping[str, Any]
+    ) -> ToolResult | ToolErrorResult:
         self._calls += 1
         call_number = self._calls
         try:

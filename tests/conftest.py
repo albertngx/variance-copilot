@@ -1,4 +1,4 @@
-"""Shared test configuration: layer markers, Hypothesis profiles and database fixtures."""
+"""Shared test configuration: layer markers, Hypothesis, snapshots and database fixtures."""
 
 from __future__ import annotations
 
@@ -44,6 +44,27 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         layer = item.path.relative_to(TESTS_DIR).parts[0]
         if layer in LAYERS:
             item.add_marker(getattr(pytest.mark, layer))
+
+
+# --- Contract snapshots ----------------------------------------------------
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--update-snapshots",
+        action="store_true",
+        help="rewrite contract snapshots; review the diff before committing",
+    )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    if config.getoption("--update-snapshots") and os.environ.get("CI"):
+        raise pytest.UsageError("--update-snapshots is refused in CI; update snapshots locally")
+
+
+@pytest.fixture(scope="session")
+def update_snapshots(request: pytest.FixtureRequest) -> bool:
+    return bool(request.config.getoption("--update-snapshots"))
 
 
 # --- Database (integration and security layers) ---------------------------
