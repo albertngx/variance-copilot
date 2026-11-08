@@ -90,4 +90,4 @@ sequenceDiagram
 
 ## Implementation notes
 
-_Nothing built yet._
+- 2026-11-08 — `ReplayProvider` and `RecordingProvider` built (M3-03): one gzipped cassette per request in `eval/cassettes/`, keyed by the request SHA-256. Details in [05 Agent](05-agent.md#cassettes); plain-language walkthrough in [docs/record-and-replay.md](../docs/record-and-replay.md). The eval runner, metrics and gates (M7) are not built yet.

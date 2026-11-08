@@ -33,7 +33,7 @@ class Environment(StrEnum):
     PROD = "prod"
 
 
-class LLMProvider(StrEnum):
+class LLMProviderName(StrEnum):
     BEDROCK = "bedrock"
     AZURE_OPENAI = "azure_openai"
     OPENAI = "openai"
@@ -80,11 +80,11 @@ class Settings(BaseSettings):
     env: Environment = Environment.DEV
     database_url: SecretStr | None = None
 
-    llm_provider: LLMProvider = LLMProvider.OPENAI
+    llm_provider: LLMProviderName = LLMProviderName.OPENAI
     llm_model: str | None = None
-    judge_provider: LLMProvider | None = None
+    judge_provider: LLMProviderName | None = None
     judge_model: str | None = None
-    embedding_provider: LLMProvider | None = None
+    embedding_provider: LLMProviderName | None = None
     embedding_model: str | None = None
     embedding_dim: Annotated[int, Field(gt=0)] = 1024
 
@@ -132,6 +132,8 @@ class Settings(BaseSettings):
                 raise ValueError(f"VC_AUTH_MODE=oidc requires {', '.join(missing)}")
         if self.mcp_transport is McpTransport.HTTP and not self.mcp_server_url:
             raise ValueError("VC_MCP_TRANSPORT=http requires VC_MCP_SERVER_URL")
+        if self.replay_mode is ReplayMode.RECORD and self.llm_provider is LLMProviderName.REPLAY:
+            raise ValueError("VC_REPLAY_MODE=record needs a live VC_LLM_PROVIDER, not replay")
         return self
 
 
