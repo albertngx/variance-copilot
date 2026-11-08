@@ -80,7 +80,7 @@ class Settings(BaseSettings):
     env: Environment = Environment.DEV
     database_url: SecretStr | None = None
 
-    llm_provider: LLMProviderName = LLMProviderName.OPENAI
+    llm_provider: LLMProviderName = LLMProviderName.BEDROCK
     llm_model: str | None = None
     judge_provider: LLMProviderName | None = None
     judge_model: str | None = None

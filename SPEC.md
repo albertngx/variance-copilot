@@ -3,7 +3,7 @@
 | | |
 | --- | --- |
 | **Document** | `SPEC.md` (repository seed and source of truth) |
-| **Version** | 1.3 (ADR-011: identity fields in tool arguments are rejected) |
+| **Version** | 1.4 (ADR-012: Amazon Bedrock with Claude Haiku 5.5 as the default model) |
 | **Owner** | Albert Navarro |
 | **Status** | Approved for implementation |
 | **Last updated** | 2026-11-08 |
@@ -282,6 +282,7 @@ This ordering keeps cost predictable, guarantees that every material variance is
 | ADR-009 | Tool layer exposed as an MCP server; the orchestrator is an MCP client | One tool interface for our agent and external clients (Teams, Copilot, Claude, other agents); standard protocol |
 | ADR-010 | Corrections to the §7.10 DDL: wider cost center keys, RLS on every `rpt` view, missing grants | The reference DDL could not load §7.6 names and leaked rows through one view |
 | ADR-011 | Company scope, roles and run identifiers in tool arguments are rejected (`INVALID_ARGUMENTS`); in request `_meta` they are ignored | Strict inputs tell a client it cannot set its scope instead of answering silently; `_meta` carries SDK keys every client sends |
+| ADR-012 | Amazon Bedrock (Converse API) with Claude Haiku 5.5 is the default model for development, recording and nightly runs; sampling parameters the model rejects are not sent | Lowest cost for a proof of concept; one AWS account; replay, not temperature, makes CI repeatable |
 
 ---
 
@@ -1940,7 +1941,8 @@ Rules:
 
 ### 12.6 Determinism, caching and cost
 
-- Temperature 0; fixed `top_p`; model ID pinned per environment.
+- The loop requests temperature 0; a provider omits sampling parameters the pinned model rejects (ADR-012). Repeatable CI comes from replay (§19.5).
+- Model ID pinned per environment.
 - Tool results are cached per run by `(tool, arguments, data_version)`; `data_version` is the generator manifest checksum or ingestion timestamp.
 - Token usage and cost are computed from a price table in `config/model_prices.yaml` and checked against the run budget after every call.
 
@@ -2447,7 +2449,7 @@ Settings are loaded with `pydantic-settings` from environment variables (prefix 
 | --- | --- | --- |
 | `VC_ENV` | `dev` | `dev`, `ci`, `stg`, `prod` |
 | `VC_DATABASE_URL` | — | PostgreSQL URL for the application role |
-| `VC_LLM_PROVIDER` | `openai` | `bedrock`, `azure_openai`, `openai`, `anthropic`, `ollama`, `replay` |
+| `VC_LLM_PROVIDER` | `bedrock` | `bedrock`, `azure_openai`, `openai`, `anthropic`, `ollama`, `replay` |
 | `VC_LLM_MODEL` | — | Model ID, pinned per environment |
 | `VC_JUDGE_PROVIDER`, `VC_JUDGE_MODEL` | — | Evaluation judge (different provider family) |
 | `VC_EMBEDDING_PROVIDER`, `VC_EMBEDDING_MODEL` | — | Embedding settings |
@@ -2617,7 +2619,7 @@ Branch protection requires `ci.yml` to pass and one review.
 | Scope too large for the schedule | Incomplete system | Priorities in §28.3; build the `ci` profile and three golden cases end to end first |
 | Synthetic data feels artificial | Weak demonstrations | Driver-based generation, calibration targets, templated memos consistent with data |
 | Validator false positives | Unnecessary repairs or fallbacks | Allowlist tuning, first-pass rate tracked, repair turn |
-| Model nondeterminism | Flaky evaluation | Temperature 0, replay recordings, tolerant matching |
+| Model nondeterminism | Flaky evaluation | Replay recordings, tolerant matching, temperature 0 where the model accepts it |
 | Evaluation leakage | Inflated scores | No event IDs in corpus (CI scan), isolated `truth` schema and role, hold-out cases |
 | Provider cost or outage | Blocked development | Replay mode, cost caps, provider interface with a local option |
 | Prompt overfitting | Poor generalisation | Hold-out set, judge trends, version-sensitivity cases |
@@ -2628,7 +2630,7 @@ Branch protection requires `ci.yml` to pass and one review.
 
 | ID | Question | Default until decided | Decide by |
 | --- | --- | --- | --- |
-| OD-1 | Default model for development and nightly runs | Provider with an available key; Bedrock for the AWS deployment | M3 |
+| OD-1 | Default model for development and nightly runs | **Decided (ADR-012):** Amazon Bedrock, Claude Haiku 5.5 | M3 |
 | OD-2 | Embedding model | 1024-dimension model from the chosen provider | M4 |
 | OD-3 | Synchronous or asynchronous questions | Synchronous with 90-second timeout | M6 |
 | OD-4 | Full LLM content in production audit | Enabled, encrypted, 7-year retention | M5 |

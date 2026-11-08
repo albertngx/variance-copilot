@@ -116,7 +116,8 @@ flowchart LR
 ```
 
 - **Replay:** responses recorded once, keyed by a hash of the exact request. CI replays them → free, deterministic tests. If the prompt or tools change, the hash changes and the run fails until re-recorded.
-- Temperature 0 and a pinned model ID per environment.
+- Temperature 0 requested (a provider drops it where the model rejects it) and a pinned model ID per environment.
+- **Default model (OD-1, [ADR-012](../docs/adr/0012-bedrock-haiku-default-model.md)):** Amazon Bedrock through the Converse API with Claude Haiku 5.5; Claude Sonnet 5.5 if Haiku cannot answer the thin-slice cases.
 
 ## System prompt (essence)
 
@@ -126,7 +127,7 @@ Never calculate; never type digits; always state scope; separate FX; explain mat
 
 ### Built so far
 
-M3-01 (provider interface), M3-03 (replay and record), M3-04 (output schemas) and M3-05 (prompt management) on branch `e3-agent-groundwork`. Nothing here calls a live model. Next: the first live provider (M3-02, which also settles OD-1, the default model) and the loop (M3-06).
+M3-01 (provider interface), M3-03 (replay and record), M3-04 (output schemas) and M3-05 (prompt management) on branch `e3-agent-groundwork`. Nothing here calls a live model. OD-1 is settled by ADR-012 (Bedrock, Claude Haiku 5.5); the Bedrock provider itself (M3-02) waits for AWS access. Next: the renderer (M3-07) and the loop (M3-06).
 
 | Module | Task | Contents |
 | --- | --- | --- |
@@ -198,3 +199,4 @@ sequenceDiagram
 
 - 2026-10-12 — ADR-009: tool calls go through an MCP client session, not direct function calls.
 - 2026-11-08 — Provider interface, replay and record, output schemas and prompt management built (M3-01, M3-03..M3-05).
+- 2026-11-08 — ADR-012: Bedrock with Claude Haiku 5.5 is the default model; `VC_LLM_PROVIDER` defaults to `bedrock`.

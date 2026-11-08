@@ -3,9 +3,9 @@
 | | |
 | --- | --- |
 | **Source** | [SPEC.md](SPEC.md) v1.1 (section references are `§n`) |
-| **Decisions** | [ADR-009](docs/adr/0009-mcp-tool-layer.md) MCP tool layer; [ADR-011](docs/adr/0011-reject-identity-in-tool-arguments.md) identity fields in tool arguments rejected |
+| **Decisions** | [ADR-009](docs/adr/0009-mcp-tool-layer.md) MCP tool layer; [ADR-011](docs/adr/0011-reject-identity-in-tool-arguments.md) identity fields in tool arguments rejected; [ADR-012](docs/adr/0012-bedrock-haiku-default-model.md) Bedrock with Claude Haiku 5.5 |
 | **Structure** | One epic per milestone (§28.1); tasks are `M<epic>-<nn>` |
-| **Last updated** | 2026-11-08 (M3-01, M3-03..M3-05) |
+| **Last updated** | 2026-11-08 (ADR-012, OD-1) |
 
 ## How to read this
 
@@ -446,7 +446,7 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 - **Spec:** §12.2, OD-1 · **Priority:** Must · **Size:** M · **Depends on:** M3-01
 - Decide OD-1 and implement that provider (tool use, structured output, usage, stop reasons, retries with backoff + jitter).
 - **Acceptance criteria**
-  - [ ] OD-1 decision recorded as an ADR.
+  - [x] OD-1 decision recorded as an ADR (ADR-012: Bedrock, Claude Haiku 5.5).
   - [ ] Tool calls and the `Answer` schema round-trip correctly in a live smoke test (marked, skipped without a key).
   - [ ] Three retries on provider errors, then a typed failure.
 
@@ -475,7 +475,7 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
   - [ ] Tools are discovered and called through one MCP client session per run (in-memory by default, streamable HTTP when `VC_MCP_TRANSPORT=http`); tool schemas sent to the LLM come from `tools/list`.
   - [ ] Limits from §12.3 enforced (turns, tool calls, parallelism 4, wall clock, output tokens, cost, one repair).
   - [ ] Cost computed from `config/model_prices.yaml` after every call; run aborts with `ABORTED_BUDGET` when exceeded.
-  - [ ] Temperature 0; model ID pinned per environment.
+  - [ ] Temperature 0 requested (not sent where the model rejects it, ADR-012); model ID pinned per environment.
   - [ ] `app.run` row created and updated with status, tokens, cost, output.
   - [ ] Prompt ID, version and SHA-256 recorded on every run (`app.run.prompt_version`, `RUN_STARTED`).
   - [ ] Tool results cached per run by `(tool, arguments, data_version)`.
@@ -879,7 +879,7 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 
 | Decision | Resolved in |
 | --- | --- |
-| OD-1 Default model | M3-02 |
+| OD-1 Default model | M3-02 (decided: ADR-012) |
 | OD-2 Embedding model | M4-06 |
 | OD-3 Sync vs async questions | M6-04 |
 | OD-4 LLM content in production audit | M5-10 |
@@ -892,6 +892,7 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 | --- | --- |
 | ADR-009 MCP tool layer | M2-11, M2-15..19, M3-06, M4-08, M4-10, M5-10, M5-12, M6-02 |
 | ADR-011 Identity fields in tool arguments rejected | M2-11, M2-17, M2-18 |
+| ADR-012 Bedrock with Claude Haiku 5.5 | M3-02, M3-06, M3-10, M7-09 |
 
 ### Not scheduled (post-v1, §28.4)
 
