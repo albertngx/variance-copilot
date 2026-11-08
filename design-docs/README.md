@@ -71,6 +71,7 @@ Open spec gap: §24 refers to §12.3 for the `VC_MAX_COST_USD_PER_RUN` default, 
 | --- | --- | --- | --- |
 | 2026-10-12 | [ADR-009](../docs/adr/0009-mcp-tool-layer.md) | Tool layer is an MCP server; our agent is an MCP client | 00, 04, 05 |
 | 2026-10-13 | [ADR-010](../docs/adr/0010-ddl-corrections.md) | DDL corrections: `varchar(20)` cost centers, RLS on `rpt.unbalanced_documents`, missing grants | 01 |
+| 2026-11-08 | [ADR-011](../docs/adr/0011-reject-identity-in-tool-arguments.md) | Scope and run identifiers in tool arguments are rejected; in `_meta` ignored | 04 |
 
 ## Conventions
 

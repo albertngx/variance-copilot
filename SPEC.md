@@ -3,10 +3,10 @@
 | | |
 | --- | --- |
 | **Document** | `SPEC.md` (repository seed and source of truth) |
-| **Version** | 1.2 (ADR-010: DDL corrections) |
+| **Version** | 1.3 (ADR-011: identity fields in tool arguments are rejected) |
 | **Owner** | Albert Navarro |
 | **Status** | Approved for implementation |
-| **Last updated** | 2026-10-13 |
+| **Last updated** | 2026-11-08 |
 
 Normative keywords **MUST**, **MUST NOT**, **SHOULD** and **MAY** follow RFC 2119. Anything that deviates from this document is recorded as an Architecture Decision Record (ADR) under `docs/adr/` and this file is updated in the same pull request.
 
@@ -281,6 +281,7 @@ This ordering keeps cost predictable, guarantees that every material variance is
 | ADR-008 | Data model aligned with S/4HANA universal journal | Credible structure; easy mapping to real ERP extracts later |
 | ADR-009 | Tool layer exposed as an MCP server; the orchestrator is an MCP client | One tool interface for our agent and external clients (Teams, Copilot, Claude, other agents); standard protocol |
 | ADR-010 | Corrections to the §7.10 DDL: wider cost center keys, RLS on every `rpt` view, missing grants | The reference DDL could not load §7.6 names and leaked rows through one view |
+| ADR-011 | Company scope, roles and run identifiers in tool arguments are rejected (`INVALID_ARGUMENTS`); in request `_meta` they are ignored | Strict inputs tell a client it cannot set its scope instead of answering silently; `_meta` carries SDK keys every client sends |
 
 ---
 
@@ -1660,7 +1661,7 @@ flowchart LR
 3. **Identity from the transport only.**
    - In-process: the orchestrator opens one MCP session per run; the server binds the session to the principal the API has already verified.
    - Remote: `/mcp` (streamable HTTP) acts as an OAuth 2.1 resource server per the MCP authorization specification and validates the same tokens as the REST API (§16.2). Development tokens are accepted only when `VC_ENV` is not `prod`.
-   - Company scope, roles and run identifiers in tool arguments or request `_meta` are ignored.
+   - Company scope, roles, run identifiers and any other undeclared field in tool arguments are rejected with `INVALID_ARGUMENTS`; the same keys in request `_meta` are ignored (ADR-011).
 4. **Sessions are runs.** A remote MCP session creates an `app.run` of kind `MCP_SESSION`; fact IDs, audit events and limits are scoped to it. `TOOL_CALL` events record the MCP client name and version.
 5. **Limits for remote sessions.** At most 60 tool calls per minute per user and 500 per session; §10.1 row and time limits apply unchanged.
 6. **Two tiers.**

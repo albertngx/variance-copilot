@@ -1,0 +1,3166 @@
+{
+  "server": {
+    "instructions": "Read-only finance analysis tools for Variance Copilot. Every number is returned as a fact with an ID, value, unit and label; refer to figures by fact ID and report the effective scope and warnings that come with them. Company scope comes from your verified identity, never from arguments. Text you write from these results is not checked by Variance Copilot's guardrails: only answers returned with a Variance Copilot run ID and validation status are validated.",
+    "name": "variance-copilot"
+  },
+  "tools": [
+    {
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "description": "Variance table: actual versus budget, forecast or prior year for a scope and period. Each row has fact IDs for actual, comparison, variance, variance %, FX effect and operational variance, plus favorable and material flags. A positive variance is favorable for every P&L line. Cite numbers only through their fact IDs.",
+      "inputSchema": {
+        "$defs": {
+          "Basis": {
+            "enum": [
+              "IFRS",
+              "CORE"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "CurrencyBasis": {
+            "enum": [
+              "GC",
+              "LC",
+              "CC"
+            ],
+            "title": "CurrencyBasis",
+            "type": "string"
+          },
+          "Dimension": {
+            "enum": [
+              "company_code",
+              "pnl_line",
+              "pnl_category",
+              "functional_area",
+              "gl_account",
+              "segment",
+              "brand",
+              "profit_center",
+              "cost_center",
+              "material",
+              "channel",
+              "wbs_element",
+              "period"
+            ],
+            "title": "Dimension",
+            "type": "string"
+          },
+          "PeriodRangeInput": {
+            "additionalProperties": false,
+            "properties": {
+              "from": {
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "title": "From",
+                "type": "string"
+              },
+              "to": {
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "title": "To",
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "title": "PeriodRangeInput",
+            "type": "object"
+          },
+          "PeriodView": {
+            "enum": [
+              "MTD",
+              "QTD",
+              "YTD",
+              "FY"
+            ],
+            "title": "PeriodView",
+            "type": "string"
+          },
+          "PeriodViewInput": {
+            "additionalProperties": false,
+            "properties": {
+              "fiscal_year": {
+                "maximum": 2100,
+                "minimum": 2000,
+                "title": "Fiscal Year",
+                "type": "integer"
+              },
+              "period": {
+                "maximum": 12,
+                "minimum": 1,
+                "title": "Period",
+                "type": "integer"
+              },
+              "view": {
+                "$ref": "#/$defs/PeriodView",
+                "default": "YTD"
+              }
+            },
+            "required": [
+              "fiscal_year",
+              "period"
+            ],
+            "title": "PeriodViewInput",
+            "type": "object"
+          },
+          "ScopeInput": {
+            "additionalProperties": false,
+            "properties": {
+              "brand": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Z0-9][A-Z0-9_-]{0,23}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Brand"
+              },
+              "company_codes": {
+                "default": [],
+                "items": {
+                  "pattern": "^[A-Z]{2}\\d{2}$",
+                  "type": "string"
+                },
+                "maxItems": 10,
+                "title": "Company Codes",
+                "type": "array"
+              },
+              "cost_center": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Z0-9][A-Z0-9_-]{0,23}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Cost Center"
+              },
+              "functional_area": {
+                "anyOf": [
+                  {
+                    "pattern": "^F\\d{3}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Functional Area"
+              },
+              "level": {
+                "$ref": "#/$defs/ScopeLevel",
+                "default": "COMPANY_CODE"
+              },
+              "profit_center": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Z0-9][A-Z0-9_-]{0,23}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Profit Center"
+              },
+              "segment": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Z0-9][A-Z0-9_-]{0,23}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Segment"
+              }
+            },
+            "title": "ScopeInput",
+            "type": "object"
+          },
+          "ScopeLevel": {
+            "enum": [
+              "GROUP",
+              "COMPANY_CODE"
+            ],
+            "title": "ScopeLevel",
+            "type": "string"
+          },
+          "Version": {
+            "description": "Version tokens; plan categories mirror ``fin.plan_version`` (SPEC §7.9).",
+            "enum": [
+              "ACT",
+              "PY",
+              "LATEST_FC",
+              "BUD25",
+              "BUD26",
+              "FC126",
+              "FC226"
+            ],
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "actual": {
+            "$ref": "#/$defs/Version",
+            "default": "ACT"
+          },
+          "basis": {
+            "$ref": "#/$defs/Basis",
+            "default": "IFRS"
+          },
+          "comparison": {
+            "$ref": "#/$defs/Version"
+          },
+          "currency_basis": {
+            "$ref": "#/$defs/CurrencyBasis",
+            "default": "GC"
+          },
+          "group_by": {
+            "default": [
+              "pnl_line"
+            ],
+            "items": {
+              "$ref": "#/$defs/Dimension"
+            },
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Group By",
+            "type": "array"
+          },
+          "period": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PeriodViewInput"
+              },
+              {
+                "$ref": "#/$defs/PeriodRangeInput"
+              }
+            ],
+            "title": "Period"
+          },
+          "scope": {
+            "$ref": "#/$defs/ScopeInput"
+          }
+        },
+        "required": [
+          "scope",
+          "period",
+          "comparison"
+        ],
+        "title": "CompareInput",
+        "type": "object"
+      },
+      "name": "compare",
+      "outputSchema": {
+        "$defs": {
+          "Basis": {
+            "enum": [
+              "IFRS",
+              "CORE"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "CompareRow": {
+            "properties": {
+              "actual": {
+                "$ref": "#/$defs/FactRef"
+              },
+              "comparison": {
+                "$ref": "#/$defs/FactRef"
+              },
+              "delta": {
+                "$ref": "#/$defs/FactRef"
+              },
+              "delta_operational": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/FactRef"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "delta_pct": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/FactRef"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "favorable": {
+                "title": "Favorable",
+                "type": "boolean"
+              },
+              "fx_effect": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/FactRef"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "key": {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "title": "Key",
+                "type": "object"
+              },
+              "magnitude": {
+                "$ref": "#/$defs/Magnitude"
+              },
+              "material": {
+                "title": "Material",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "key",
+              "actual",
+              "comparison",
+              "delta",
+              "delta_pct",
+              "fx_effect",
+              "delta_operational",
+              "favorable",
+              "magnitude",
+              "material"
+            ],
+            "title": "CompareRow",
+            "type": "object"
+          },
+          "CurrencyBasis": {
+            "enum": [
+              "GC",
+              "LC",
+              "CC"
+            ],
+            "title": "CurrencyBasis",
+            "type": "string"
+          },
+          "EffectiveScope": {
+            "description": "What a call actually covered, echoed back so answers can state it.",
+            "properties": {
+              "actual": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Actual"
+              },
+              "basis": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Basis"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "company_codes": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Company Codes",
+                "type": "array"
+              },
+              "comparison": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Comparison"
+              },
+              "comparison_periods": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Comparison Periods"
+              },
+              "currency_basis": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CurrencyBasis"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "filters": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "default": {},
+                "title": "Filters",
+                "type": "object"
+              },
+              "level": {
+                "$ref": "#/$defs/ScopeLevel"
+              },
+              "periods": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Periods",
+                "type": "array"
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Version"
+              }
+            },
+            "required": [
+              "level",
+              "company_codes"
+            ],
+            "title": "EffectiveScope",
+            "type": "object"
+          },
+          "Fact": {
+            "properties": {
+              "fact_id": {
+                "maxLength": 16,
+                "title": "Fact Id",
+                "type": "string"
+              },
+              "favorable": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Favorable"
+              },
+              "kind": {
+                "$ref": "#/$defs/FactKind"
+              },
+              "label": {
+                "title": "Label",
+                "type": "string"
+              },
+              "magnitude": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Magnitude"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "provenance": {
+                "$ref": "#/$defs/Provenance"
+              },
+              "unit": {
+                "maxLength": 8,
+                "title": "Unit",
+                "type": "string"
+              },
+              "value": {
+                "title": "Value",
+                "type": "string"
+              }
+            },
+            "required": [
+              "fact_id",
+              "kind",
+              "value",
+              "unit",
+              "label",
+              "provenance"
+            ],
+            "title": "Fact",
+            "type": "object"
+          },
+          "FactKind": {
+            "enum": [
+              "AMOUNT",
+              "PERCENT",
+              "PP",
+              "QUANTITY",
+              "RATE",
+              "COUNT"
+            ],
+            "title": "FactKind",
+            "type": "string"
+          },
+          "FactRef": {
+            "description": "A pointer the model writes as a placeholder instead of the number.",
+            "properties": {
+              "fact_id": {
+                "title": "Fact Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "fact_id"
+            ],
+            "title": "FactRef",
+            "type": "object"
+          },
+          "Magnitude": {
+            "enum": [
+              "UP",
+              "DOWN",
+              "FLAT"
+            ],
+            "title": "Magnitude",
+            "type": "string"
+          },
+          "Provenance": {
+            "properties": {
+              "arguments_sha256": {
+                "title": "Arguments Sha256",
+                "type": "string"
+              },
+              "field": {
+                "title": "Field",
+                "type": "string"
+              },
+              "row_key": {
+                "title": "Row Key",
+                "type": "string"
+              },
+              "tool": {
+                "title": "Tool",
+                "type": "string"
+              },
+              "tool_call_id": {
+                "title": "Tool Call Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tool_call_id",
+              "tool",
+              "arguments_sha256",
+              "row_key",
+              "field"
+            ],
+            "title": "Provenance",
+            "type": "object"
+          },
+          "ScopeLevel": {
+            "enum": [
+              "GROUP",
+              "COMPANY_CODE"
+            ],
+            "title": "ScopeLevel",
+            "type": "string"
+          },
+          "WarningCode": {
+            "enum": [
+              "OPEN_PERIOD",
+              "PARTIAL_SCOPE",
+              "NO_COMPARISON_BASE",
+              "TRUNCATED",
+              "NO_DATA"
+            ],
+            "title": "WarningCode",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "effective_scope": {
+            "$ref": "#/$defs/EffectiveScope"
+          },
+          "facts": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/Fact"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/$defs/CompareRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "tool_call_id": {
+            "default": "",
+            "title": "Tool Call Id",
+            "type": "string"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CompareRow"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/WarningCode"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "effective_scope",
+          "rows",
+          "total"
+        ],
+        "title": "CompareResult",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "description": "Exchange rates used for translation, in USD per unit of currency, by rate type (AVG monthly average, CLO closing, B25/B26 budget, F126/F226 forecast) and month.",
+      "inputSchema": {
+        "$defs": {
+          "PeriodRangeInput": {
+            "additionalProperties": false,
+            "properties": {
+              "from": {
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "title": "From",
+                "type": "string"
+              },
+              "to": {
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "title": "To",
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "title": "PeriodRangeInput",
+            "type": "object"
+          },
+          "PeriodView": {
+            "enum": [
+              "MTD",
+              "QTD",
+              "YTD",
+              "FY"
+            ],
+            "title": "PeriodView",
+            "type": "string"
+          },
+          "PeriodViewInput": {
+            "additionalProperties": false,
+            "properties": {
+              "fiscal_year": {
+                "maximum": 2100,
+                "minimum": 2000,
+                "title": "Fiscal Year",
+                "type": "integer"
+              },
+              "period": {
+                "maximum": 12,
+                "minimum": 1,
+                "title": "Period",
+                "type": "integer"
+              },
+              "view": {
+                "$ref": "#/$defs/PeriodView",
+                "default": "YTD"
+              }
+            },
+            "required": [
+              "fiscal_year",
+              "period"
+            ],
+            "title": "PeriodViewInput",
+            "type": "object"
+          },
+          "RateType": {
+            "enum": [
+              "AVG",
+              "CLO",
+              "B25",
+              "B26",
+              "F126",
+              "F226"
+            ],
+            "title": "RateType",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "currencies": {
+            "items": {
+              "enum": [
+                "EUR",
+                "CHF"
+              ],
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Currencies",
+            "type": "array"
+          },
+          "period": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PeriodViewInput"
+              },
+              {
+                "$ref": "#/$defs/PeriodRangeInput"
+              }
+            ],
+            "title": "Period"
+          },
+          "rate_types": {
+            "default": [
+              "AVG"
+            ],
+            "items": {
+              "$ref": "#/$defs/RateType"
+            },
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Rate Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "currencies",
+          "period"
+        ],
+        "title": "GetFxRatesInput",
+        "type": "object"
+      },
+      "name": "get_fx_rates",
+      "outputSchema": {
+        "$defs": {
+          "Fact": {
+            "properties": {
+              "fact_id": {
+                "maxLength": 16,
+                "title": "Fact Id",
+                "type": "string"
+              },
+              "favorable": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Favorable"
+              },
+              "kind": {
+                "$ref": "#/$defs/FactKind"
+              },
+              "label": {
+                "title": "Label",
+                "type": "string"
+              },
+              "magnitude": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Magnitude"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "provenance": {
+                "$ref": "#/$defs/Provenance"
+              },
+              "unit": {
+                "maxLength": 8,
+                "title": "Unit",
+                "type": "string"
+              },
+              "value": {
+                "title": "Value",
+                "type": "string"
+              }
+            },
+            "required": [
+              "fact_id",
+              "kind",
+              "value",
+              "unit",
+              "label",
+              "provenance"
+            ],
+            "title": "Fact",
+            "type": "object"
+          },
+          "FactKind": {
+            "enum": [
+              "AMOUNT",
+              "PERCENT",
+              "PP",
+              "QUANTITY",
+              "RATE",
+              "COUNT"
+            ],
+            "title": "FactKind",
+            "type": "string"
+          },
+          "FactRef": {
+            "description": "A pointer the model writes as a placeholder instead of the number.",
+            "properties": {
+              "fact_id": {
+                "title": "Fact Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "fact_id"
+            ],
+            "title": "FactRef",
+            "type": "object"
+          },
+          "FxRateRow": {
+            "properties": {
+              "currency": {
+                "title": "Currency",
+                "type": "string"
+              },
+              "period": {
+                "title": "Period",
+                "type": "string"
+              },
+              "rate": {
+                "$ref": "#/$defs/FactRef"
+              },
+              "rate_type": {
+                "$ref": "#/$defs/RateType"
+              }
+            },
+            "required": [
+              "rate_type",
+              "currency",
+              "period",
+              "rate"
+            ],
+            "title": "FxRateRow",
+            "type": "object"
+          },
+          "Magnitude": {
+            "enum": [
+              "UP",
+              "DOWN",
+              "FLAT"
+            ],
+            "title": "Magnitude",
+            "type": "string"
+          },
+          "Provenance": {
+            "properties": {
+              "arguments_sha256": {
+                "title": "Arguments Sha256",
+                "type": "string"
+              },
+              "field": {
+                "title": "Field",
+                "type": "string"
+              },
+              "row_key": {
+                "title": "Row Key",
+                "type": "string"
+              },
+              "tool": {
+                "title": "Tool",
+                "type": "string"
+              },
+              "tool_call_id": {
+                "title": "Tool Call Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tool_call_id",
+              "tool",
+              "arguments_sha256",
+              "row_key",
+              "field"
+            ],
+            "title": "Provenance",
+            "type": "object"
+          },
+          "RateType": {
+            "enum": [
+              "AVG",
+              "CLO",
+              "B25",
+              "B26",
+              "F126",
+              "F226"
+            ],
+            "title": "RateType",
+            "type": "string"
+          },
+          "WarningCode": {
+            "enum": [
+              "OPEN_PERIOD",
+              "PARTIAL_SCOPE",
+              "NO_COMPARISON_BASE",
+              "TRUNCATED",
+              "NO_DATA"
+            ],
+            "title": "WarningCode",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "facts": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/Fact"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/$defs/FxRateRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "tool_call_id": {
+            "default": "",
+            "title": "Tool Call Id",
+            "type": "string"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/WarningCode"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "title": "GetFxRatesResult",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "description": "Whether fiscal periods are OPEN, CLOSING or CLOSED for each visible company code. Figures for periods that are not closed are preliminary.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "company_codes": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Z]{2}\\d{2}$",
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Company Codes",
+            "type": "array"
+          },
+          "fiscal_year": {
+            "maximum": 2100,
+            "minimum": 2000,
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "period": {
+            "anyOf": [
+              {
+                "maximum": 16,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Period"
+          }
+        },
+        "required": [
+          "fiscal_year"
+        ],
+        "title": "GetPeriodStatusInput",
+        "type": "object"
+      },
+      "name": "get_period_status",
+      "outputSchema": {
+        "$defs": {
+          "Basis": {
+            "enum": [
+              "IFRS",
+              "CORE"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "CurrencyBasis": {
+            "enum": [
+              "GC",
+              "LC",
+              "CC"
+            ],
+            "title": "CurrencyBasis",
+            "type": "string"
+          },
+          "EffectiveScope": {
+            "description": "What a call actually covered, echoed back so answers can state it.",
+            "properties": {
+              "actual": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Actual"
+              },
+              "basis": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Basis"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "company_codes": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Company Codes",
+                "type": "array"
+              },
+              "comparison": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Comparison"
+              },
+              "comparison_periods": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Comparison Periods"
+              },
+              "currency_basis": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CurrencyBasis"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "filters": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "default": {},
+                "title": "Filters",
+                "type": "object"
+              },
+              "level": {
+                "$ref": "#/$defs/ScopeLevel"
+              },
+              "periods": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Periods",
+                "type": "array"
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Version"
+              }
+            },
+            "required": [
+              "level",
+              "company_codes"
+            ],
+            "title": "EffectiveScope",
+            "type": "object"
+          },
+          "Fact": {
+            "properties": {
+              "fact_id": {
+                "maxLength": 16,
+                "title": "Fact Id",
+                "type": "string"
+              },
+              "favorable": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Favorable"
+              },
+              "kind": {
+                "$ref": "#/$defs/FactKind"
+              },
+              "label": {
+                "title": "Label",
+                "type": "string"
+              },
+              "magnitude": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Magnitude"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "provenance": {
+                "$ref": "#/$defs/Provenance"
+              },
+              "unit": {
+                "maxLength": 8,
+                "title": "Unit",
+                "type": "string"
+              },
+              "value": {
+                "title": "Value",
+                "type": "string"
+              }
+            },
+            "required": [
+              "fact_id",
+              "kind",
+              "value",
+              "unit",
+              "label",
+              "provenance"
+            ],
+            "title": "Fact",
+            "type": "object"
+          },
+          "FactKind": {
+            "enum": [
+              "AMOUNT",
+              "PERCENT",
+              "PP",
+              "QUANTITY",
+              "RATE",
+              "COUNT"
+            ],
+            "title": "FactKind",
+            "type": "string"
+          },
+          "Magnitude": {
+            "enum": [
+              "UP",
+              "DOWN",
+              "FLAT"
+            ],
+            "title": "Magnitude",
+            "type": "string"
+          },
+          "PeriodState": {
+            "enum": [
+              "OPEN",
+              "CLOSING",
+              "CLOSED"
+            ],
+            "title": "PeriodState",
+            "type": "string"
+          },
+          "PeriodStatusRow": {
+            "properties": {
+              "closed_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Closed At"
+              },
+              "company_code": {
+                "title": "Company Code",
+                "type": "string"
+              },
+              "period": {
+                "title": "Period",
+                "type": "string"
+              },
+              "status": {
+                "$ref": "#/$defs/PeriodState"
+              }
+            },
+            "required": [
+              "company_code",
+              "period",
+              "status",
+              "closed_at"
+            ],
+            "title": "PeriodStatusRow",
+            "type": "object"
+          },
+          "Provenance": {
+            "properties": {
+              "arguments_sha256": {
+                "title": "Arguments Sha256",
+                "type": "string"
+              },
+              "field": {
+                "title": "Field",
+                "type": "string"
+              },
+              "row_key": {
+                "title": "Row Key",
+                "type": "string"
+              },
+              "tool": {
+                "title": "Tool",
+                "type": "string"
+              },
+              "tool_call_id": {
+                "title": "Tool Call Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tool_call_id",
+              "tool",
+              "arguments_sha256",
+              "row_key",
+              "field"
+            ],
+            "title": "Provenance",
+            "type": "object"
+          },
+          "ScopeLevel": {
+            "enum": [
+              "GROUP",
+              "COMPANY_CODE"
+            ],
+            "title": "ScopeLevel",
+            "type": "string"
+          },
+          "WarningCode": {
+            "enum": [
+              "OPEN_PERIOD",
+              "PARTIAL_SCOPE",
+              "NO_COMPARISON_BASE",
+              "TRUNCATED",
+              "NO_DATA"
+            ],
+            "title": "WarningCode",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "effective_scope": {
+            "$ref": "#/$defs/EffectiveScope"
+          },
+          "facts": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/Fact"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/$defs/PeriodStatusRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "tool_call_id": {
+            "default": "",
+            "title": "Tool Call Id",
+            "type": "string"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/WarningCode"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "effective_scope",
+          "rows"
+        ],
+        "title": "GetPeriodStatusResult",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "description": "Profit and loss amounts of one version (actuals, a budget or forecast, or the prior year) for a scope and period, grouped by up to three dimensions. Income is positive and expense negative. Every amount is a fact ID; cite it as a placeholder.",
+      "inputSchema": {
+        "$defs": {
+          "Basis": {
+            "enum": [
+              "IFRS",
+              "CORE"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "Dimension": {
+            "enum": [
+              "company_code",
+              "pnl_line",
+              "pnl_category",
+              "functional_area",
+              "gl_account",
+              "segment",
+              "brand",
+              "profit_center",
+              "cost_center",
+              "material",
+              "channel",
+              "wbs_element",
+              "period"
+            ],
+            "title": "Dimension",
+            "type": "string"
+          },
+          "PeriodRangeInput": {
+            "additionalProperties": false,
+            "properties": {
+              "from": {
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "title": "From",
+                "type": "string"
+              },
+              "to": {
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "title": "To",
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "title": "PeriodRangeInput",
+            "type": "object"
+          },
+          "PeriodView": {
+            "enum": [
+              "MTD",
+              "QTD",
+              "YTD",
+              "FY"
+            ],
+            "title": "PeriodView",
+            "type": "string"
+          },
+          "PeriodViewInput": {
+            "additionalProperties": false,
+            "properties": {
+              "fiscal_year": {
+                "maximum": 2100,
+                "minimum": 2000,
+                "title": "Fiscal Year",
+                "type": "integer"
+              },
+              "period": {
+                "maximum": 12,
+                "minimum": 1,
+                "title": "Period",
+                "type": "integer"
+              },
+              "view": {
+                "$ref": "#/$defs/PeriodView",
+                "default": "YTD"
+              }
+            },
+            "required": [
+              "fiscal_year",
+              "period"
+            ],
+            "title": "PeriodViewInput",
+            "type": "object"
+          },
+          "ScopeInput": {
+            "additionalProperties": false,
+            "properties": {
+              "brand": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Z0-9][A-Z0-9_-]{0,23}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Brand"
+              },
+              "company_codes": {
+                "default": [],
+                "items": {
+                  "pattern": "^[A-Z]{2}\\d{2}$",
+                  "type": "string"
+                },
+                "maxItems": 10,
+                "title": "Company Codes",
+                "type": "array"
+              },
+              "cost_center": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Z0-9][A-Z0-9_-]{0,23}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Cost Center"
+              },
+              "functional_area": {
+                "anyOf": [
+                  {
+                    "pattern": "^F\\d{3}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Functional Area"
+              },
+              "level": {
+                "$ref": "#/$defs/ScopeLevel",
+                "default": "COMPANY_CODE"
+              },
+              "profit_center": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Z0-9][A-Z0-9_-]{0,23}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Profit Center"
+              },
+              "segment": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Z0-9][A-Z0-9_-]{0,23}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Segment"
+              }
+            },
+            "title": "ScopeInput",
+            "type": "object"
+          },
+          "ScopeLevel": {
+            "enum": [
+              "GROUP",
+              "COMPANY_CODE"
+            ],
+            "title": "ScopeLevel",
+            "type": "string"
+          },
+          "Version": {
+            "description": "Version tokens; plan categories mirror ``fin.plan_version`` (SPEC §7.9).",
+            "enum": [
+              "ACT",
+              "PY",
+              "LATEST_FC",
+              "BUD25",
+              "BUD26",
+              "FC126",
+              "FC226"
+            ],
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "$ref": "#/$defs/Basis",
+            "default": "IFRS"
+          },
+          "currency_basis": {
+            "default": "GC",
+            "enum": [
+              "GC",
+              "LC"
+            ],
+            "title": "Currency Basis",
+            "type": "string"
+          },
+          "group_by": {
+            "default": [
+              "pnl_line"
+            ],
+            "items": {
+              "$ref": "#/$defs/Dimension"
+            },
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Group By",
+            "type": "array"
+          },
+          "period": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PeriodViewInput"
+              },
+              {
+                "$ref": "#/$defs/PeriodRangeInput"
+              }
+            ],
+            "title": "Period"
+          },
+          "scope": {
+            "$ref": "#/$defs/ScopeInput"
+          },
+          "version": {
+            "$ref": "#/$defs/Version",
+            "default": "ACT"
+          }
+        },
+        "required": [
+          "scope",
+          "period"
+        ],
+        "title": "GetPnlInput",
+        "type": "object"
+      },
+      "name": "get_pnl",
+      "outputSchema": {
+        "$defs": {
+          "Basis": {
+            "enum": [
+              "IFRS",
+              "CORE"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "CurrencyBasis": {
+            "enum": [
+              "GC",
+              "LC",
+              "CC"
+            ],
+            "title": "CurrencyBasis",
+            "type": "string"
+          },
+          "EffectiveScope": {
+            "description": "What a call actually covered, echoed back so answers can state it.",
+            "properties": {
+              "actual": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Actual"
+              },
+              "basis": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Basis"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "company_codes": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Company Codes",
+                "type": "array"
+              },
+              "comparison": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Comparison"
+              },
+              "comparison_periods": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Comparison Periods"
+              },
+              "currency_basis": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CurrencyBasis"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "filters": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "default": {},
+                "title": "Filters",
+                "type": "object"
+              },
+              "level": {
+                "$ref": "#/$defs/ScopeLevel"
+              },
+              "periods": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Periods",
+                "type": "array"
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Version"
+              }
+            },
+            "required": [
+              "level",
+              "company_codes"
+            ],
+            "title": "EffectiveScope",
+            "type": "object"
+          },
+          "Fact": {
+            "properties": {
+              "fact_id": {
+                "maxLength": 16,
+                "title": "Fact Id",
+                "type": "string"
+              },
+              "favorable": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Favorable"
+              },
+              "kind": {
+                "$ref": "#/$defs/FactKind"
+              },
+              "label": {
+                "title": "Label",
+                "type": "string"
+              },
+              "magnitude": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Magnitude"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "provenance": {
+                "$ref": "#/$defs/Provenance"
+              },
+              "unit": {
+                "maxLength": 8,
+                "title": "Unit",
+                "type": "string"
+              },
+              "value": {
+                "title": "Value",
+                "type": "string"
+              }
+            },
+            "required": [
+              "fact_id",
+              "kind",
+              "value",
+              "unit",
+              "label",
+              "provenance"
+            ],
+            "title": "Fact",
+            "type": "object"
+          },
+          "FactKind": {
+            "enum": [
+              "AMOUNT",
+              "PERCENT",
+              "PP",
+              "QUANTITY",
+              "RATE",
+              "COUNT"
+            ],
+            "title": "FactKind",
+            "type": "string"
+          },
+          "FactRef": {
+            "description": "A pointer the model writes as a placeholder instead of the number.",
+            "properties": {
+              "fact_id": {
+                "title": "Fact Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "fact_id"
+            ],
+            "title": "FactRef",
+            "type": "object"
+          },
+          "Magnitude": {
+            "enum": [
+              "UP",
+              "DOWN",
+              "FLAT"
+            ],
+            "title": "Magnitude",
+            "type": "string"
+          },
+          "PnlRow": {
+            "properties": {
+              "amount": {
+                "$ref": "#/$defs/FactRef"
+              },
+              "key": {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "title": "Key",
+                "type": "object"
+              }
+            },
+            "required": [
+              "key",
+              "amount"
+            ],
+            "title": "PnlRow",
+            "type": "object"
+          },
+          "Provenance": {
+            "properties": {
+              "arguments_sha256": {
+                "title": "Arguments Sha256",
+                "type": "string"
+              },
+              "field": {
+                "title": "Field",
+                "type": "string"
+              },
+              "row_key": {
+                "title": "Row Key",
+                "type": "string"
+              },
+              "tool": {
+                "title": "Tool",
+                "type": "string"
+              },
+              "tool_call_id": {
+                "title": "Tool Call Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tool_call_id",
+              "tool",
+              "arguments_sha256",
+              "row_key",
+              "field"
+            ],
+            "title": "Provenance",
+            "type": "object"
+          },
+          "ScopeLevel": {
+            "enum": [
+              "GROUP",
+              "COMPANY_CODE"
+            ],
+            "title": "ScopeLevel",
+            "type": "string"
+          },
+          "WarningCode": {
+            "enum": [
+              "OPEN_PERIOD",
+              "PARTIAL_SCOPE",
+              "NO_COMPARISON_BASE",
+              "TRUNCATED",
+              "NO_DATA"
+            ],
+            "title": "WarningCode",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "effective_scope": {
+            "$ref": "#/$defs/EffectiveScope"
+          },
+          "facts": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/Fact"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/$defs/PnlRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "tool_call_id": {
+            "default": "",
+            "title": "Tool Call Id",
+            "type": "string"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PnlRow"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/WarningCode"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "effective_scope",
+          "rows",
+          "total"
+        ],
+        "title": "GetPnlResult",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "description": "Evidence drill-down: P&L journal lines with document details, largest amounts first, filtered by account, cost center, material, vendor, document type, document number, text or minimum amount. At most 200 lines.",
+      "inputSchema": {
+        "$defs": {
+          "PeriodRangeInput": {
+            "additionalProperties": false,
+            "properties": {
+              "from": {
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "title": "From",
+                "type": "string"
+              },
+              "to": {
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "title": "To",
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "title": "PeriodRangeInput",
+            "type": "object"
+          },
+          "PeriodView": {
+            "enum": [
+              "MTD",
+              "QTD",
+              "YTD",
+              "FY"
+            ],
+            "title": "PeriodView",
+            "type": "string"
+          },
+          "PeriodViewInput": {
+            "additionalProperties": false,
+            "properties": {
+              "fiscal_year": {
+                "maximum": 2100,
+                "minimum": 2000,
+                "title": "Fiscal Year",
+                "type": "integer"
+              },
+              "period": {
+                "maximum": 12,
+                "minimum": 1,
+                "title": "Period",
+                "type": "integer"
+              },
+              "view": {
+                "$ref": "#/$defs/PeriodView",
+                "default": "YTD"
+              }
+            },
+            "required": [
+              "fiscal_year",
+              "period"
+            ],
+            "title": "PeriodViewInput",
+            "type": "object"
+          },
+          "ScopeInput": {
+            "additionalProperties": false,
+            "properties": {
+              "brand": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Z0-9][A-Z0-9_-]{0,23}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Brand"
+              },
+              "company_codes": {
+                "default": [],
+                "items": {
+                  "pattern": "^[A-Z]{2}\\d{2}$",
+                  "type": "string"
+                },
+                "maxItems": 10,
+                "title": "Company Codes",
+                "type": "array"
+              },
+              "cost_center": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Z0-9][A-Z0-9_-]{0,23}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Cost Center"
+              },
+              "functional_area": {
+                "anyOf": [
+                  {
+                    "pattern": "^F\\d{3}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Functional Area"
+              },
+              "level": {
+                "$ref": "#/$defs/ScopeLevel",
+                "default": "COMPANY_CODE"
+              },
+              "profit_center": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Z0-9][A-Z0-9_-]{0,23}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Profit Center"
+              },
+              "segment": {
+                "anyOf": [
+                  {
+                    "pattern": "^[A-Z0-9][A-Z0-9_-]{0,23}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Segment"
+              }
+            },
+            "title": "ScopeInput",
+            "type": "object"
+          },
+          "ScopeLevel": {
+            "enum": [
+              "GROUP",
+              "COMPANY_CODE"
+            ],
+            "title": "ScopeLevel",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "cost_center": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z0-9][A-Z0-9_-]{0,23}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cost Center"
+          },
+          "document_number": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{10}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Document Number"
+          },
+          "document_type": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Document Type"
+          },
+          "gl_account": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{8}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Gl Account"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "material": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z0-9][A-Z0-9_-]{0,23}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Material"
+          },
+          "min_amount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Min Amount"
+          },
+          "period": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PeriodViewInput"
+              },
+              {
+                "$ref": "#/$defs/PeriodRangeInput"
+              }
+            ],
+            "title": "Period"
+          },
+          "scope": {
+            "$ref": "#/$defs/ScopeInput"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Text"
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z0-9][A-Z0-9_-]{0,23}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Vendor"
+          }
+        },
+        "required": [
+          "scope",
+          "period"
+        ],
+        "title": "JournalLinesInput",
+        "type": "object"
+      },
+      "name": "journal_lines",
+      "outputSchema": {
+        "$defs": {
+          "Basis": {
+            "enum": [
+              "IFRS",
+              "CORE"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "CurrencyBasis": {
+            "enum": [
+              "GC",
+              "LC",
+              "CC"
+            ],
+            "title": "CurrencyBasis",
+            "type": "string"
+          },
+          "EffectiveScope": {
+            "description": "What a call actually covered, echoed back so answers can state it.",
+            "properties": {
+              "actual": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Actual"
+              },
+              "basis": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Basis"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "company_codes": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Company Codes",
+                "type": "array"
+              },
+              "comparison": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Comparison"
+              },
+              "comparison_periods": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Comparison Periods"
+              },
+              "currency_basis": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CurrencyBasis"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "filters": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "default": {},
+                "title": "Filters",
+                "type": "object"
+              },
+              "level": {
+                "$ref": "#/$defs/ScopeLevel"
+              },
+              "periods": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Periods",
+                "type": "array"
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Version"
+              }
+            },
+            "required": [
+              "level",
+              "company_codes"
+            ],
+            "title": "EffectiveScope",
+            "type": "object"
+          },
+          "Fact": {
+            "properties": {
+              "fact_id": {
+                "maxLength": 16,
+                "title": "Fact Id",
+                "type": "string"
+              },
+              "favorable": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Favorable"
+              },
+              "kind": {
+                "$ref": "#/$defs/FactKind"
+              },
+              "label": {
+                "title": "Label",
+                "type": "string"
+              },
+              "magnitude": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Magnitude"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "provenance": {
+                "$ref": "#/$defs/Provenance"
+              },
+              "unit": {
+                "maxLength": 8,
+                "title": "Unit",
+                "type": "string"
+              },
+              "value": {
+                "title": "Value",
+                "type": "string"
+              }
+            },
+            "required": [
+              "fact_id",
+              "kind",
+              "value",
+              "unit",
+              "label",
+              "provenance"
+            ],
+            "title": "Fact",
+            "type": "object"
+          },
+          "FactKind": {
+            "enum": [
+              "AMOUNT",
+              "PERCENT",
+              "PP",
+              "QUANTITY",
+              "RATE",
+              "COUNT"
+            ],
+            "title": "FactKind",
+            "type": "string"
+          },
+          "FactRef": {
+            "description": "A pointer the model writes as a placeholder instead of the number.",
+            "properties": {
+              "fact_id": {
+                "title": "Fact Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "fact_id"
+            ],
+            "title": "FactRef",
+            "type": "object"
+          },
+          "JournalLine": {
+            "properties": {
+              "amount_gc": {
+                "$ref": "#/$defs/FactRef"
+              },
+              "amount_lc": {
+                "$ref": "#/$defs/FactRef"
+              },
+              "assignment": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Assignment"
+              },
+              "brand": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Brand"
+              },
+              "company_code": {
+                "title": "Company Code",
+                "type": "string"
+              },
+              "cost_center": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Cost Center"
+              },
+              "created_by": {
+                "title": "Created By",
+                "type": "string"
+              },
+              "currency_lc": {
+                "title": "Currency Lc",
+                "type": "string"
+              },
+              "customer": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Customer"
+              },
+              "document_date": {
+                "format": "date",
+                "title": "Document Date",
+                "type": "string"
+              },
+              "document_number": {
+                "title": "Document Number",
+                "type": "string"
+              },
+              "document_type": {
+                "title": "Document Type",
+                "type": "string"
+              },
+              "fiscal_year": {
+                "title": "Fiscal Year",
+                "type": "integer"
+              },
+              "functional_area": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Functional Area"
+              },
+              "gl_account": {
+                "title": "Gl Account",
+                "type": "string"
+              },
+              "gl_account_name": {
+                "title": "Gl Account Name",
+                "type": "string"
+              },
+              "header_text": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Header Text"
+              },
+              "is_reversal": {
+                "title": "Is Reversal",
+                "type": "boolean"
+              },
+              "line_item": {
+                "title": "Line Item",
+                "type": "integer"
+              },
+              "line_text": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Line Text"
+              },
+              "material": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Material"
+              },
+              "period": {
+                "title": "Period",
+                "type": "integer"
+              },
+              "posting_date": {
+                "format": "date",
+                "title": "Posting Date",
+                "type": "string"
+              },
+              "reference": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reference"
+              },
+              "reversal_document": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reversal Document"
+              },
+              "trading_partner": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Trading Partner"
+              },
+              "vendor": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Vendor"
+              },
+              "wbs_element": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Wbs Element"
+              }
+            },
+            "required": [
+              "company_code",
+              "fiscal_year",
+              "period",
+              "document_number",
+              "line_item",
+              "document_type",
+              "posting_date",
+              "document_date",
+              "created_by",
+              "gl_account",
+              "gl_account_name",
+              "functional_area",
+              "cost_center",
+              "material",
+              "brand",
+              "customer",
+              "vendor",
+              "wbs_element",
+              "trading_partner",
+              "assignment",
+              "line_text",
+              "header_text",
+              "reference",
+              "is_reversal",
+              "reversal_document",
+              "currency_lc",
+              "amount_gc",
+              "amount_lc"
+            ],
+            "title": "JournalLine",
+            "type": "object"
+          },
+          "Magnitude": {
+            "enum": [
+              "UP",
+              "DOWN",
+              "FLAT"
+            ],
+            "title": "Magnitude",
+            "type": "string"
+          },
+          "Provenance": {
+            "properties": {
+              "arguments_sha256": {
+                "title": "Arguments Sha256",
+                "type": "string"
+              },
+              "field": {
+                "title": "Field",
+                "type": "string"
+              },
+              "row_key": {
+                "title": "Row Key",
+                "type": "string"
+              },
+              "tool": {
+                "title": "Tool",
+                "type": "string"
+              },
+              "tool_call_id": {
+                "title": "Tool Call Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tool_call_id",
+              "tool",
+              "arguments_sha256",
+              "row_key",
+              "field"
+            ],
+            "title": "Provenance",
+            "type": "object"
+          },
+          "ScopeLevel": {
+            "enum": [
+              "GROUP",
+              "COMPANY_CODE"
+            ],
+            "title": "ScopeLevel",
+            "type": "string"
+          },
+          "WarningCode": {
+            "enum": [
+              "OPEN_PERIOD",
+              "PARTIAL_SCOPE",
+              "NO_COMPARISON_BASE",
+              "TRUNCATED",
+              "NO_DATA"
+            ],
+            "title": "WarningCode",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "effective_scope": {
+            "$ref": "#/$defs/EffectiveScope"
+          },
+          "facts": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/Fact"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/$defs/JournalLine"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "tool_call_id": {
+            "default": "",
+            "title": "Tool Call Id",
+            "type": "string"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/WarningCode"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "effective_scope",
+          "lines"
+        ],
+        "title": "JournalLinesResult",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "description": "Look up valid codes and names for a dimension (company codes, segments, functional areas, profit centers, cost centers, P&L accounts, brands, materials, WBS elements). Use it to turn names in a question into codes before calling other tools.",
+      "inputSchema": {
+        "$defs": {
+          "MemberDimension": {
+            "enum": [
+              "company_code",
+              "segment",
+              "functional_area",
+              "profit_center",
+              "cost_center",
+              "gl_account",
+              "brand",
+              "material",
+              "wbs_element"
+            ],
+            "title": "MemberDimension",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "dimension": {
+            "$ref": "#/$defs/MemberDimension"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Filter"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dimension"
+        ],
+        "title": "ListDimensionMembersInput",
+        "type": "object"
+      },
+      "name": "list_dimension_members",
+      "outputSchema": {
+        "$defs": {
+          "DimensionMember": {
+            "properties": {
+              "attributes": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "title": "Attributes",
+                "type": "object"
+              },
+              "code": {
+                "title": "Code",
+                "type": "string"
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Name"
+              }
+            },
+            "required": [
+              "code",
+              "name",
+              "attributes"
+            ],
+            "title": "DimensionMember",
+            "type": "object"
+          },
+          "Fact": {
+            "properties": {
+              "fact_id": {
+                "maxLength": 16,
+                "title": "Fact Id",
+                "type": "string"
+              },
+              "favorable": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Favorable"
+              },
+              "kind": {
+                "$ref": "#/$defs/FactKind"
+              },
+              "label": {
+                "title": "Label",
+                "type": "string"
+              },
+              "magnitude": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Magnitude"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "provenance": {
+                "$ref": "#/$defs/Provenance"
+              },
+              "unit": {
+                "maxLength": 8,
+                "title": "Unit",
+                "type": "string"
+              },
+              "value": {
+                "title": "Value",
+                "type": "string"
+              }
+            },
+            "required": [
+              "fact_id",
+              "kind",
+              "value",
+              "unit",
+              "label",
+              "provenance"
+            ],
+            "title": "Fact",
+            "type": "object"
+          },
+          "FactKind": {
+            "enum": [
+              "AMOUNT",
+              "PERCENT",
+              "PP",
+              "QUANTITY",
+              "RATE",
+              "COUNT"
+            ],
+            "title": "FactKind",
+            "type": "string"
+          },
+          "Magnitude": {
+            "enum": [
+              "UP",
+              "DOWN",
+              "FLAT"
+            ],
+            "title": "Magnitude",
+            "type": "string"
+          },
+          "MemberDimension": {
+            "enum": [
+              "company_code",
+              "segment",
+              "functional_area",
+              "profit_center",
+              "cost_center",
+              "gl_account",
+              "brand",
+              "material",
+              "wbs_element"
+            ],
+            "title": "MemberDimension",
+            "type": "string"
+          },
+          "Provenance": {
+            "properties": {
+              "arguments_sha256": {
+                "title": "Arguments Sha256",
+                "type": "string"
+              },
+              "field": {
+                "title": "Field",
+                "type": "string"
+              },
+              "row_key": {
+                "title": "Row Key",
+                "type": "string"
+              },
+              "tool": {
+                "title": "Tool",
+                "type": "string"
+              },
+              "tool_call_id": {
+                "title": "Tool Call Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tool_call_id",
+              "tool",
+              "arguments_sha256",
+              "row_key",
+              "field"
+            ],
+            "title": "Provenance",
+            "type": "object"
+          },
+          "WarningCode": {
+            "enum": [
+              "OPEN_PERIOD",
+              "PARTIAL_SCOPE",
+              "NO_COMPARISON_BASE",
+              "TRUNCATED",
+              "NO_DATA"
+            ],
+            "title": "WarningCode",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "dimension": {
+            "$ref": "#/$defs/MemberDimension"
+          },
+          "facts": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/Fact"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/$defs/DimensionMember"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "tool_call_id": {
+            "default": "",
+            "title": "Tool Call Id",
+            "type": "string"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/WarningCode"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dimension",
+          "members"
+        ],
+        "title": "ListDimensionMembersResult",
+        "type": "object"
+      }
+    }
+  ]
+}

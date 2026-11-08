@@ -3,9 +3,9 @@
 | | |
 | --- | --- |
 | **Source** | [SPEC.md](SPEC.md) v1.1 (section references are `§n`) |
-| **Decisions** | [ADR-009](docs/adr/0009-mcp-tool-layer.md) MCP tool layer |
+| **Decisions** | [ADR-009](docs/adr/0009-mcp-tool-layer.md) MCP tool layer; [ADR-011](docs/adr/0011-reject-identity-in-tool-arguments.md) identity fields in tool arguments rejected |
 | **Structure** | One epic per milestone (§28.1); tasks are `M<epic>-<nn>` |
-| **Last updated** | 2026-10-12 (ADR-009) |
+| **Last updated** | 2026-11-08 (M2-15, M2-17; ADR-011) |
 
 ## How to read this
 
@@ -389,8 +389,10 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 #### M2-15 Tool contract snapshots
 - **Spec:** §20 (contract), §10.5 rule 8 · **Priority:** Must · **Size:** S · **Depends on:** M2-12, M2-13, M2-17
 - **Acceptance criteria**
-  - [ ] The MCP `tools/list` result (names, descriptions, input and output schemas, annotations) snapshotted in `tests/contract/`.
-  - [ ] CI fails on an unreviewed schema change (snapshot update needs an explicit flag).
+- Pulled ahead of M2-13: the snapshot covers the six data tools, and each M2-13 tool PR regenerates it so its schema diff is reviewed.
+- **Acceptance criteria**
+  - [x] The MCP `tools/list` result (names, descriptions, input and output schemas, annotations) snapshotted in `tests/contract/`.
+  - [x] CI fails on an unreviewed schema change (snapshot update needs an explicit flag).
 
 #### M2-16 Tool performance on the `full` profile
 - **Spec:** §21 · **Priority:** Should · **Size:** M · **Depends on:** M2-13
@@ -405,11 +407,11 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 - **Spec:** §10.5, ADR-009 · **Priority:** Must · **Size:** M · **Depends on:** M2-11
 - `variance_copilot.mcp`: an MCP server (official Python SDK) that registers every tool from the registry, plus a client factory the orchestrator uses over an in-memory transport. One session per run, bound server-side to the verified principal.
 - **Acceptance criteria**
-  - [ ] Every registry tool appears in `tools/list` with input and output schemas generated from its Pydantic models and `readOnlyHint: true`.
-  - [ ] Tool results return structured content (rows, fact IDs, facts, effective scope, warnings) plus a short text summary.
-  - [ ] Integration test: an MCP client session calls `compare` on the `ci` profile and gets the same structured result as a direct function call.
-  - [ ] Scope or run identifiers supplied in arguments or `_meta` are ignored (test).
-  - [ ] Tool errors arrive as structured results (`error.code`), not protocol errors.
+  - [x] Every registry tool appears in `tools/list` with input and output schemas generated from its Pydantic models and `readOnlyHint: true`.
+  - [x] Tool results return structured content (rows, fact IDs, facts, effective scope, warnings) plus a short text summary.
+  - [x] Integration test: an MCP client session calls `compare` on the `ci` profile and gets the same structured result as a direct function call.
+  - [x] Scope or run identifiers supplied in arguments are rejected (`INVALID_ARGUMENTS`) and in `_meta` ignored (ADR-011; test).
+  - [x] Tool errors arrive as structured results (`error.code`), not protocol errors.
 
 #### M2-18 Remote MCP endpoint with OAuth
 - **Spec:** §10.5 rules 3–5, §16.2, §16.3 · **Priority:** Should · **Size:** M · **Depends on:** M2-17, M6-02
@@ -888,6 +890,7 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 | ADR | Affects |
 | --- | --- |
 | ADR-009 MCP tool layer | M2-11, M2-15..19, M3-06, M4-08, M4-10, M5-10, M5-12, M6-02 |
+| ADR-011 Identity fields in tool arguments rejected | M2-11, M2-17, M2-18 |
 
 ### Not scheduled (post-v1, §28.4)
 

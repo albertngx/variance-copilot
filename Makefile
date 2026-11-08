@@ -6,7 +6,7 @@ PROFILE ?= dev
 SEED ?= 20261010
 MODE ?= replay
 
-.PHONY: help up down lint format test test-unit coverage-gate migrate seed corpus eval
+.PHONY: help up down lint format test test-unit snapshots coverage-gate migrate seed corpus eval
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -30,8 +30,11 @@ test: ## Unit, property and integration tests with coverage (needs Docker)
 	$(UV) run pytest --cov --cov-report=term --cov-report=json
 	$(UV) run python scripts/coverage_gate.py
 
-test-unit: ## Unit and property tests only (no Docker)
-	$(UV) run pytest -m "unit or property"
+test-unit: ## Unit, property and contract tests only (no Docker)
+	$(UV) run pytest -m "unit or property or contract"
+
+snapshots: ## Rewrite contract snapshots (tests/contract) after reviewing the change
+	$(UV) run pytest tests/contract --update-snapshots
 
 migrate: ## Apply database migrations (VC_DATABASE_URL)
 	$(UV) run vc db migrate
