@@ -2631,7 +2631,7 @@ Branch protection requires `ci.yml` to pass and one review.
 
 | ID | Question | Default until decided | Decide by |
 | --- | --- | --- | --- |
-| OD-1 | Default model for development and nightly runs | **Decided (ADR-012):** Amazon Bedrock, Claude Haiku 5.5 | M3 |
+| OD-1 | Default model for development and nightly runs | **Decided (ADR-012):** Amazon Bedrock, Claude Haiku 5.5; Claude Haiku 4.5 in the interim until the account has Haiku 5.5 access | M3 |
 | OD-2 | Embedding model | 1024-dimension model from the chosen provider | M4 |
 | OD-3 | Synchronous or asynchronous questions | Synchronous with 90-second timeout | M6 |
 | OD-4 | Full LLM content in production audit | Enabled, encrypted, 7-year retention | M5 |

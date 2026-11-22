@@ -134,7 +134,7 @@ M3-01 (provider interface), M3-03 (replay and record), M3-04 (output schemas) an
 | `agent/providers/base.py` | M3-01 | §12.2 dataclasses (`ToolSpec`, `ToolCall`, `Message`, `Usage`, `Completion`), `LLMProvider` and `EmbeddingProvider` protocols, `ProviderError` |
 | `agent/providers/factory.py` | M3-01 | `make_llm_provider(settings)`; `LIVE_PROVIDERS` maps `VC_LLM_PROVIDER` values to live implementations (`bedrock` since M3-02) |
 | `agent/providers/bedrock.py` | M3-02 | `BedrockProvider` (Converse API); pure helpers `converse_request`, `completion`, `supported_schema`; `STOP_REASONS` |
-| `config/model_prices.yaml` | M3-02 | `global.anthropic.claude-haiku-5-5` at USD 0.10 / 0.50 per million tokens |
+| `config/model_prices.yaml` | M3-02 | `global.anthropic.claude-haiku-5-5` at USD 0.10 / 0.50 and the interim `global.anthropic.claude-haiku-4-5-20251001-v1:0` at USD 1.00 / 5.00 per million tokens |
 | `tests/live/` | M3-02 | Live smoke test, skipped unless `VC_LIVE_TESTS=1` (`make test-live`) |
 | `agent/providers/replay.py` | M3-03 | `request_payload`, `request_sha256`, `CassetteStore`, `ReplayProvider`, `RecordingProvider`, `RecordingNotFoundError` |
 | `agent/schemas.py` | M3-04 | §12.4 `ScopeEcho`, `Driver`, `Answer`, `CommentarySection`, `Commentary`; `RESPONSE_MODELS` |
@@ -223,7 +223,8 @@ flowchart LR
 - **`raw`:** `stop_reason` (Bedrock's own value), `request_id` and `latency_ms`. `model_id` is the pinned ID (`VC_LLM_MODEL`), because Converse does not echo the model.
 - **Credentials:** the default boto3 chain. Locally that is `aws login` with an IAM user, which boto3 reads only with `botocore[crt]`, a dev dependency. Deployed code uses an IAM role and needs no extra.
 - **Tests:** unit tests answer Converse at botocore's HTTP layer (`before-send`), so serialization, error parsing and retries run for real without network. `tests/live/test_bedrock_live.py` does a tool round trip ending in a valid `Answer`; it reads `VC_LLM_MODEL` from `.env` and runs only with `VC_LIVE_TESTS=1` (`make test-live`).
-- **Verified live (2026-11-22)** on `eu.anthropic.claude-haiku-4-5-20251001-v1:0`: structured output and tools combine in one Converse request, the trimmed `Answer` schema is accepted, and `thinking: disabled` is accepted. This settles the open question in ADR-012's risks. Haiku 5.5 itself could not be called yet: the account had not accepted its Marketplace offer, which only covers the global profile.
+- **Verified live (2026-11-22)** on Claude Haiku 4.5 (`eu.` and `global.` profiles): structured output and tools combine in one Converse request, the trimmed `Answer` schema is accepted, and `thinking: disabled` is accepted. This settles the open question in ADR-012's risks.
+- **Interim model:** the account cannot call Haiku 5.5 yet ("not available for this account" in every region and in the console). Development uses `global.anthropic.claude-haiku-4-5-20251001-v1:0` until AWS grants access (ADR-012 update); both prices are in `config/model_prices.yaml`. M3-10 recordings wait for Haiku 5.5.
 
 ### Schemas and prompts
 
@@ -261,4 +262,4 @@ flowchart LR
 - 2026-11-08 — Provider interface, replay and record, output schemas and prompt management built (M3-01, M3-03..M3-05).
 - 2026-11-08 — ADR-012: Bedrock with Claude Haiku 5.5 is the default model; `VC_LLM_PROVIDER` defaults to `bedrock`.
 - 2026-11-08 — Renderer built (M3-07).
-- 2026-11-22 — Bedrock provider built (M3-02); live smoke test layer added.
+- 2026-11-22 — Bedrock provider built (M3-02); live smoke test layer added. Claude Haiku 4.5 is the interim development model until the account has Haiku 5.5 access.

@@ -447,7 +447,7 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 - Decide OD-1 and implement that provider (tool use, structured output, usage, stop reasons, retries with backoff + jitter).
 - **Acceptance criteria**
   - [x] OD-1 decision recorded as an ADR (ADR-012: Bedrock, Claude Haiku 5.5).
-  - [ ] Tool calls and the `Answer` schema round-trip correctly in a live smoke test (marked, skipped without a key). Passes on Claude Haiku 4.5; to rerun on Haiku 5.5 once its Marketplace offer is accepted.
+  - [x] Tool calls and the `Answer` schema round-trip correctly in a live smoke test (marked, skipped without a key). Passes on Claude Haiku 4.5, the interim model; rerun on Haiku 5.5 once the account has access (ADR-012 update).
   - [x] Three retries on provider errors, then a typed failure.
 
 #### M3-03 Replay and record providers

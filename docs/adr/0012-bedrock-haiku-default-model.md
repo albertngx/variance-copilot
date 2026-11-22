@@ -61,3 +61,11 @@ Prices at the time of writing, per million tokens (input / output), on-demand on
 | Amazon Nova Lite or Micro | Saves fractions of a cent per run but is more likely to break the placeholder rules; can still be tried later through `VC_LLM_MODEL` |
 | Claude Sonnet 5.5 as the default | About 17 times the cost of Haiku 5.5; kept as the step-up in decision 3 |
 | Ollama (local) | Free, but local models are weaker at multi-step tool use and the strict output rules |
+
+## Update 2026-11-22: interim model
+
+The project's AWS account cannot call Claude Haiku 5.5 yet: every region and the console playground return "not available for this account", while Claude Haiku 4.5 works. An AWS support case asks for access.
+
+Until access is granted, development uses `global.anthropic.claude-haiku-4-5-20251001-v1:0` (USD 1.00 / 5.00 per million tokens, about USD 0.06 per Q&A run). The decision above is unchanged: recordings for the thin slice (M3-10) and nightly runs wait for Haiku 5.5, and switching back is a change of `VC_LLM_MODEL`.
+
+The M3-02 live smoke test confirmed the open risk above: structured output and tools combine in one Converse request.
