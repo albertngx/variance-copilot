@@ -33,8 +33,9 @@ flowchart LR
 | [07 Retrieval](07-retrieval.md) | Policy corpus, ingestion, hybrid search, citations | Product (corpus content is scaffolding) | Design |
 | [08 Review and audit](08-review-and-audit.md) | Approval workflow, hash-chained audit trail | Product | Design |
 | [09 Evaluation](09-evaluation.md) | Golden set, replay mode, metrics and CI gates | Quality tooling | Design |
+| [10 Deployment](10-deployment.md) | AWS reference architecture and the local Docker mirror on the M4 Pro | Scaffolding | Design |
 
-Planned once built: API and CLI, deployment, observability.
+Planned once built: API and CLI, observability.
 
 ## Development environment (E0, implemented)
 
