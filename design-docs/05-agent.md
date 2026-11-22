@@ -116,7 +116,8 @@ flowchart LR
 ```
 
 - **Replay:** responses recorded once, keyed by a hash of the exact request. CI replays them → free, deterministic tests. If the prompt or tools change, the hash changes and the run fails until re-recorded.
-- Temperature 0 and a pinned model ID per environment.
+- Temperature 0 requested (a provider drops it where the model rejects it) and a pinned model ID per environment.
+- **Default model (OD-1, [ADR-012](../docs/adr/0012-bedrock-haiku-default-model.md)):** Amazon Bedrock through the Converse API with Claude Haiku 5.5; Claude Sonnet 5.5 if Haiku cannot answer the thin-slice cases.
 
 ## System prompt (essence)
 
@@ -126,16 +127,21 @@ Never calculate; never type digits; always state scope; separate FX; explain mat
 
 ### Built so far
 
-M3-01 (provider interface), M3-03 (replay and record), M3-04 (output schemas) and M3-05 (prompt management) on branch `e3-agent-groundwork`. Nothing here calls a live model. Next: the first live provider (M3-02, which also settles OD-1, the default model) and the loop (M3-06).
+M3-01 (provider interface), M3-03 (replay and record), M3-04 (output schemas) and M3-05 (prompt management) on branch `e3-agent-groundwork`. OD-1 is settled by ADR-012 (Bedrock, Claude Haiku 5.5). The renderer (M3-07) followed on branch `e3-renderer`, and the Bedrock provider (M3-02) on branch `e3-bedrock-provider`. Next: the loop (M3-06).
 
 | Module | Task | Contents |
 | --- | --- | --- |
 | `agent/providers/base.py` | M3-01 | §12.2 dataclasses (`ToolSpec`, `ToolCall`, `Message`, `Usage`, `Completion`), `LLMProvider` and `EmbeddingProvider` protocols, `ProviderError` |
-| `agent/providers/factory.py` | M3-01 | `make_llm_provider(settings)`; `LIVE_PROVIDERS` maps `VC_LLM_PROVIDER` values to live implementations (empty until M3-02) |
+| `agent/providers/factory.py` | M3-01 | `make_llm_provider(settings)`; `LIVE_PROVIDERS` maps `VC_LLM_PROVIDER` values to live implementations (`bedrock` since M3-02) |
+| `agent/providers/bedrock.py` | M3-02 | `BedrockProvider` (Converse API); pure helpers `converse_request`, `completion`, `supported_schema`; `STOP_REASONS` |
+| `config/model_prices.yaml` | M3-02 | `global.anthropic.claude-haiku-5-5` at USD 0.10 / 0.50 and the interim `global.anthropic.claude-haiku-4-5-20251001-v1:0` at USD 1.00 / 5.00 per million tokens |
+| `tests/live/` | M3-02 | Live smoke test, skipped unless `VC_LIVE_TESTS=1` (`make test-live`) |
 | `agent/providers/replay.py` | M3-03 | `request_payload`, `request_sha256`, `CassetteStore`, `ReplayProvider`, `RecordingProvider`, `RecordingNotFoundError` |
 | `agent/schemas.py` | M3-04 | §12.4 `ScopeEcho`, `Driver`, `Answer`, `CommentarySection`, `Commentary`; `RESPONSE_MODELS` |
 | `agent/prompts.py` | M3-05 | `load_prompt(name)` returns a `Prompt` (front matter and template); `Prompt.render(**variables)` returns a `RenderedPrompt` (text and SHA-256) |
 | `prompts/system/qa.md`, `prompts/repair.md` | M3-05 | Q&A system prompt (the §12.5 draft, version 1) and the repair turn (variable `$violations`) |
+| `agent/renderer.py` | M3-07 | `render_answer(answer, facts, run_id=, citations=)` returns `RenderedAnswer` (Markdown and placeholder mapping); `TOKEN`, `parse_placeholder`, `ALLOWED_KINDS` for the validator; `CitedChunk`, `RenderError` |
+| `finance/formatting.py` | M3-07 | `format_quantity` added (whole number and optional unit); `format_fte` uses it |
 
 ### Provider selection
 
@@ -185,6 +191,41 @@ sequenceDiagram
 - **Per-case folders:** the eval runner (M7) can pass one sub-folder per golden case as `cassettes`; the store works the same either way.
 - **Failures:** a missing recording raises `RecordingNotFoundError` with the request hash, the model and how to re-record. A corrupt cassette, one in another format, or one saved under the wrong name raises `ProviderError`.
 
+### Bedrock provider
+
+```mermaid
+flowchart LR
+  subgraph Interface["§12.2 request"]
+    SYS["system messages"]
+    MSG["user / assistant / tool messages"]
+    TL["ToolSpec list"]
+    RS["response_schema"]
+  end
+  subgraph Converse["Converse request"]
+    CS["system"]
+    CM["messages<br/>(toolUse, toolResult blocks)"]
+    TC["toolConfig"]
+    OC["outputConfig.textFormat<br/>json_schema"]
+    AF["additionalModelRequestFields<br/>thinking disabled (Claude)"]
+  end
+  SYS --> CS
+  MSG --> CM
+  TL --> TC
+  RS -- "unsupported keywords removed" --> OC
+```
+
+- **Messages:** system messages go to Converse `system`. An assistant message's tool calls become `toolUse` blocks after its text (empty text is left out). Each `tool` message becomes a `toolResult` block in a user turn, and consecutive same-role turns are merged, so parallel tool results travel together in one user message. A tool message without `tool_call_id` raises `ProviderError`.
+- **Sampling and reasoning (ADR-012):** for Claude model IDs (`anthropic.claude` in the ID) the provider sends no temperature and sets `thinking` to `disabled`; other Bedrock models get the requested temperature. The requested temperature stays in the replay key either way.
+- **Structured output:** Converse supports it natively through `outputConfig.textFormat` (`json_schema`), so no "submit answer" tool is needed. `supported_schema` removes the keywords Claude structured outputs reject (`minLength`, `maxLength`, `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `minItems`, `maxItems`). Property names are never removed. The pydantic models still enforce those limits when the loop parses the answer.
+- **Stop reasons:** `end_turn` and `stop_sequence` map to `end_turn`; `tool_use` to `tool_use`; `max_tokens` and `model_context_window_exceeded` to `max_tokens`; `guardrail_intervened` and `content_filtered` to `refusal`. `malformed_model_output`, `malformed_tool_use` and any unknown reason raise `ProviderError`.
+- **Retries:** botocore `standard` retry mode with `total_max_attempts = 4`: the first attempt plus three retries with exponential backoff and jitter, on throttling, transient 5xx and connection errors. Validation and access errors are not retried. Any failure, after retries or not, raises `ProviderError` with the Bedrock error code in the message.
+- **Timeouts:** botocore sets timeouts per client, not per call, so the provider keeps one client per `timeout_s` value (read timeout = `timeout_s`, connect timeout at most 5 s). A loop that passes a constant timeout uses a single client.
+- **`raw`:** `stop_reason` (Bedrock's own value), `request_id` and `latency_ms`. `model_id` is the pinned ID (`VC_LLM_MODEL`), because Converse does not echo the model.
+- **Credentials:** the default boto3 chain. Locally that is `aws login` with an IAM user, which boto3 reads only with `botocore[crt]`, a dev dependency. Deployed code uses an IAM role and needs no extra.
+- **Tests:** unit tests answer Converse at botocore's HTTP layer (`before-send`), so serialization, error parsing and retries run for real without network. `tests/live/test_bedrock_live.py` does a tool round trip ending in a valid `Answer`; it reads `VC_LLM_MODEL` from `.env` and runs only with `VC_LIVE_TESTS=1` (`make test-live`).
+- **Verified live (2026-11-22)** on Claude Haiku 4.5 (`eu.` and `global.` profiles): structured output and tools combine in one Converse request, the trimmed `Answer` schema is accepted, and `thinking: disabled` is accepted. This settles the open question in ADR-012's risks.
+- **Interim model:** the account cannot call Haiku 5.5 yet ("not available for this account" in every region and in the console). Development uses `global.anthropic.claude-haiku-4-5-20251001-v1:0` until AWS grants access (ADR-012 update); both prices are in `config/model_prices.yaml`. M3-10 recordings wait for Haiku 5.5.
+
 ### Schemas and prompts
 
 - **Output models reject unknown fields** (`extra="forbid"`). The exported JSON schemas therefore carry `additionalProperties: false`, as structured-output APIs expect, and a stray field fails validation instead of being silently dropped. Otherwise the models are §12.4 as written.
@@ -194,7 +235,31 @@ sequenceDiagram
 - **Storing the SHA on every run** belongs to M3-06, which creates the `app.run` row and the `RUN_STARTED` event.
 - **Config:** the enum of provider names is now `LLMProviderName` (it was `LLMProvider`), so the §12.2 protocol keeps its spec name.
 
+### Renderer
+
+```mermaid
+flowchart LR
+  A["Answer<br/>(validated JSON)"] --> R["render_answer"]
+  L[("FactLedger<br/>of the run")] --> R
+  C["CitedChunk per chunk ID<br/>(from retrieval, M4-08)"] --> R
+  R --> MD["Markdown<br/>(Appendix C layout)"]
+  R --> MAP["placeholder → text<br/>(VALIDATION event)"]
+```
+
+- **Strict placeholder grammar:** `{{F<call>-<seq>}}` with an optional `|abs`, `|pct`, `|abspct` or `|pp`. Anything else inside double braces, spaces included, and any unmatched `{{` or `}}` raise `RenderError`. The grounding validator (M5-03) reuses `TOKEN`, `parse_placeholder` and `ALLOWED_KINDS`, so it accepts exactly what the renderer can render.
+- **Modifiers and kinds** follow the §13.1 table; values use the M2-01 formatters. A QUANTITY renders as a whole number with its unit (`12 FTE`); a COUNT as a whole number without one.
+- **Driver impact** appears in the driver title in the fact's own signed format: an amount as `{{F}}`, a percentage as `|pct`, percentage points as `|pp`. It is recorded in the mapping under that token, so every number in the Markdown is in the mapping (the rendered-number grounding metric, §19).
+- **Citations:** the caller passes a `CitedChunk(doc_id, section_path)` per chunk ID retrieved in the run (built by M4-08). The label is the document ID, `§` and the last element of the section path: `POL-005 §4.2 Capitalisation`, matching §11.7 and Appendix C. A driver's citations share one parenthesis, separated by `;`. Answer-level citations that no driver shows go on a `Sources:` line, which policy answers without drivers need; Appendix C does not show that case. An unknown chunk ID raises `RenderError`.
+- **Scope line:** `GC` renders as `USD`, `LC` as "local currency", `CC` as "constant currency", `CORE` as "core"; "preliminary" is appended when set.
+- **Period ranges** the model writes with a hyphen (`P01-P09`) render with an en dash, as in Appendix C. Other hyphens and dates are left alone.
+- **Footer:** Appendix C's `{run_id}` is filled in with the full run ID, so the facts endpoint can be called as shown; the label keeps the short form (`run 3f6c…`).
+- **Not rendered:** follow-up questions (Appendix C's rendered output omits them; they stay in the structured answer and `vc ask --json`). Commentary rendering and its "AI-generated draft" label (§14 rule 6) come with the commentary pipeline (M6-05).
+- In a normal run the validator (M5-03) catches bad placeholders first and triggers the repair turn; a `RenderError` after validation means a bug.
+
 ### History
 
 - 2026-10-12 — ADR-009: tool calls go through an MCP client session, not direct function calls.
 - 2026-11-08 — Provider interface, replay and record, output schemas and prompt management built (M3-01, M3-03..M3-05).
+- 2026-11-08 — ADR-012: Bedrock with Claude Haiku 5.5 is the default model; `VC_LLM_PROVIDER` defaults to `bedrock`.
+- 2026-11-08 — Renderer built (M3-07).
+- 2026-11-22 — Bedrock provider built (M3-02); live smoke test layer added. Claude Haiku 4.5 is the interim development model until the account has Haiku 5.5 access.

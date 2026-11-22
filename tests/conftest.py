@@ -21,7 +21,7 @@ from variance_copilot.tools.catalog import DATA_TOOLS
 from variance_copilot.tools.context import Principal, TransactionFactory
 from variance_copilot.tools.session import ToolSession
 
-LAYERS = ("unit", "property", "integration", "contract", "api", "security")
+LAYERS = ("unit", "property", "integration", "contract", "api", "security", "live")
 TESTS_DIR = Path(__file__).parent
 
 # `ci` is deterministic: same examples on every run, no example database.

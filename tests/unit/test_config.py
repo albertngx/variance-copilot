@@ -53,7 +53,7 @@ def test_defaults_match_spec() -> None:
 
     assert s.env is Environment.DEV
     assert s.database_url is None
-    assert s.llm_provider is LLMProviderName.OPENAI
+    assert s.llm_provider is LLMProviderName.BEDROCK
     assert s.llm_model is None
     assert s.judge_provider is None
     assert s.judge_model is None

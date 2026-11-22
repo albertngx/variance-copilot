@@ -6,7 +6,7 @@ PROFILE ?= dev
 SEED ?= 20261010
 MODE ?= replay
 
-.PHONY: help up down lint format test test-unit snapshots coverage-gate migrate seed corpus eval
+.PHONY: help up down lint format test test-unit test-live snapshots coverage-gate migrate seed corpus eval
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -32,6 +32,9 @@ test: ## Unit, property and integration tests with coverage (needs Docker)
 
 test-unit: ## Unit, property and contract tests only (no Docker)
 	$(UV) run pytest -m "unit or property or contract"
+
+test-live: ## Live model smoke tests (costs a fraction of a cent; needs AWS credentials)
+	VC_LIVE_TESTS=1 $(UV) run pytest -m live
 
 snapshots: ## Rewrite contract snapshots (tests/contract) after reviewing the change
 	$(UV) run pytest tests/contract --update-snapshots

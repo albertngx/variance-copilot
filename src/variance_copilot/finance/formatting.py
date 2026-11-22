@@ -72,10 +72,15 @@ def format_pp(value: Decimal, *, absolute: bool = False) -> str:
 
 
 @with_finance_context
+def format_quantity(value: Decimal, unit: str = "", *, absolute: bool = False) -> str:
+    """A whole number with an optional unit: ``1,235 FTE``, ``12``."""
+    rounded = _round(abs(value), _WHOLE)
+    return _signed(value, rounded, f"{rounded:,f} {unit}".rstrip(), absolute)
+
+
 def format_fte(value: Decimal, *, absolute: bool = False) -> str:
     """Full-time equivalents as a whole number: ``1,235 FTE``."""
-    rounded = _round(abs(value), _WHOLE)
-    return _signed(value, rounded, f"{rounded:,f} FTE", absolute)
+    return format_quantity(value, "FTE", absolute=absolute)
 
 
 @with_finance_context

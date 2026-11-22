@@ -7,6 +7,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.14",
     "anyio>=4.5",
+    "boto3>=1.40",
     "mcp>=2.3,<3",
     "numpy>=2.1",
     "psycopg[binary]>=3.2",
@@ -22,6 +23,8 @@ vc = "variance_copilot.cli:app"
 
 [dependency-groups]
 dev = [
+    "boto3-stubs[bedrock-runtime]>=1.44.9",
+    "botocore[crt]>=1.44.9",
     "hypothesis>=6.120",
     "mypy>=1.13",
     "pip-audit>=2.7",
@@ -100,6 +103,7 @@ markers = [
     "contract: JSON Schema snapshot tests",
     "api: HTTP API tests",
     "security: audit immutability, grants, injection, scope",
+    "live: calls the real model; skipped unless VC_LIVE_TESTS=1",
 ]
 
 # --- coverage -----------------------------------------------------------

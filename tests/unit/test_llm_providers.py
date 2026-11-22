@@ -284,8 +284,8 @@ def test_record_mode_wraps_the_live_provider(live_openai: ScriptedProvider, tmp_
 
 
 def test_a_provider_without_an_implementation_is_a_config_error() -> None:
-    with pytest.raises(ConfigError, match="VC_LLM_PROVIDER=bedrock is not available; available"):
-        make_llm_provider(settings(llm_provider="bedrock"))
+    with pytest.raises(ConfigError, match="VC_LLM_PROVIDER=ollama is not available; available"):
+        make_llm_provider(settings(llm_provider="ollama"))
 
 
 def test_the_model_id_is_required() -> None:
