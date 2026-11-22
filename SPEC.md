@@ -283,6 +283,7 @@ This ordering keeps cost predictable, guarantees that every material variance is
 | ADR-010 | Corrections to the §7.10 DDL: wider cost center keys, RLS on every `rpt` view, missing grants | The reference DDL could not load §7.6 names and leaked rows through one view |
 | ADR-011 | Company scope, roles and run identifiers in tool arguments are rejected (`INVALID_ARGUMENTS`); in request `_meta` they are ignored | Strict inputs tell a client it cannot set its scope instead of answering silently; `_meta` carries SDK keys every client sends |
 | ADR-012 | Amazon Bedrock (Converse API) with Claude Haiku 5.5 is the default model for development, recording and nightly runs; sampling parameters the model rejects are not sent | Lowest cost for a proof of concept; one AWS account; replay, not temperature, makes CI repeatable |
+| ADR-013 | A turn's tool calls run one after another in the model's order, at most four per turn | The tool session already serialises calls; deterministic fact IDs keep replayed runs identical to recordings |
 
 ---
 
@@ -1830,7 +1831,7 @@ for turn in 1..max_turns:
     audit LLM_CALL (model, params, token usage, cost, request/response hashes)
     if budget exceeded: abort (ABORTED_BUDGET)
     if completion has tool calls:
-        execute up to max_parallel calls concurrently through the run's MCP session (each in its own RLS transaction)
+        execute up to max_calls_per_turn calls one after another, in the model's order, through the run's MCP session (each in its own RLS transaction; ADR-013)
         register facts; audit TOOL_CALL and FACTS_REGISTERED
         append tool results to messages; continue
     else:
@@ -1844,7 +1845,7 @@ on loop exhaustion: FAILED with deterministic fallback (§13.7)
 | --- | --- | --- |
 | Maximum turns | 8 | 6 |
 | Maximum tool calls | 12 | 6 (after the variance pack) |
-| Maximum parallel tool calls | 4 | 4 |
+| Maximum tool calls per turn (run one after another, ADR-013) | 4 | 4 |
 | Per-tool timeout | 10 s | 10 s |
 | Run wall-clock | 90 s | 300 s |
 | Maximum output tokens | 2,000 | 6,000 |

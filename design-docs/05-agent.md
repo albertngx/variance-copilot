@@ -1,6 +1,6 @@
 # 05 Agent
 
-**Status:** Partial · **Spec:** §6.2, §6.3, §12, §10.5 · **Backlog:** M3-01..M3-10, M6-05 · **Decisions:** [ADR-009](../docs/adr/0009-mcp-tool-layer.md)
+**Status:** Partial · **Spec:** §6.2, §6.3, §12, §10.5 · **Backlog:** M3-01..M3-10, M6-05 · **Decisions:** [ADR-009](../docs/adr/0009-mcp-tool-layer.md), [ADR-012](../docs/adr/0012-bedrock-haiku-default-model.md), [ADR-013](../docs/adr/0013-sequential-tool-calls.md)
 
 ## Two modes
 
@@ -22,7 +22,7 @@ flowchart TD
   LLM --> BUD{"Budget, turns,<br/>time left?"}
   BUD -- no --> FB["Deterministic fallback"]
   BUD -- yes --> TC{"Tool calls?"}
-  TC -- yes --> EXE["Run up to 4 tools in parallel<br/>via the run's MCP session<br/>(each in its own RLS transaction)<br/>register facts"]
+  TC -- yes --> EXE["Run up to 4 tools, one after another<br/>in the model's order (ADR-013),<br/>via the run's MCP session<br/>(each in its own RLS transaction)<br/>register facts"]
   EXE --> LLM
   TC -- "no: final answer" --> VAL{"Guardrails pass?"}
   VAL -- yes --> REN["Render → answer"]
@@ -36,7 +36,7 @@ flowchart TD
 | --- | --- | --- |
 | Turns | 8 | 6 |
 | Tool calls | 12 | 6 after the variance pack |
-| Parallel tool calls | 4 | 4 |
+| Tool calls per turn (one after another) | 4 | 4 |
 | Wall clock | 90 s | 300 s |
 | Output tokens | 2,000 | 6,000 |
 | Cost per run | USD 0.50 | USD 2.00 |
@@ -127,7 +127,7 @@ Never calculate; never type digits; always state scope; separate FX; explain mat
 
 ### Built so far
 
-M3-01 (provider interface), M3-03 (replay and record), M3-04 (output schemas) and M3-05 (prompt management) on branch `e3-agent-groundwork`. OD-1 is settled by ADR-012 (Bedrock, Claude Haiku 5.5). The renderer (M3-07) followed on branch `e3-renderer`, and the Bedrock provider (M3-02) on branch `e3-bedrock-provider`. Next: the loop (M3-06).
+M3-01 (provider interface), M3-03 (replay and record), M3-04 (output schemas) and M3-05 (prompt management) on branch `e3-agent-groundwork`. OD-1 is settled by ADR-012 (Bedrock, Claude Haiku 5.5). The renderer (M3-07) followed on branch `e3-renderer`, the Bedrock provider (M3-02) on branch `e3-bedrock-provider`, and the agent loop with `vc ask` (M3-06, M3-08) on branch `e3-agent-loop`. Next: the thin slice of three golden cases (M3-10), after the container PR.
 
 | Module | Task | Contents |
 | --- | --- | --- |
@@ -142,6 +142,13 @@ M3-01 (provider interface), M3-03 (replay and record), M3-04 (output schemas) an
 | `prompts/system/qa.md`, `prompts/repair.md` | M3-05 | Q&A system prompt (the §12.5 draft, version 1) and the repair turn (variable `$violations`) |
 | `agent/renderer.py` | M3-07 | `render_answer(answer, facts, run_id=, citations=)` returns `RenderedAnswer` (Markdown and placeholder mapping); `TOKEN`, `parse_placeholder`, `ALLOWED_KINDS` for the validator; `CitedChunk`, `RenderError` |
 | `finance/formatting.py` | M3-07 | `format_quantity` added (whole number and optional unit); `format_fte` uses it |
+| `agent/loop.py` | M3-06 | `Agent.ask(question, principal, tools, facts, run_id=)` returns `RunResult`; `Limits` (§12.3), `DataInfo`, `Prompts`, `ToolClient` (the MCP client methods the loop uses) |
+| `agent/validation.py` | M3-06 | `check_answer(text, facts, run_id=)` returns `CheckedAnswer` (answer, rendered Markdown, violations) |
+| `agent/runs.py` | M3-06 | `PostgresRunStore` writes `app.run`; `cost_usd`, `model_price` (§15.5) |
+| `agent/events.py` | M3-06 | `RunEvents` protocol and `MemoryEvents`, the stand-in for the audit writer (M5-01) |
+| `agent/ask.py` | M3-08 | `ask_as_dev_user(question, user)`: dev-user principal, tool session, in-memory MCP client, provider, price, data version |
+| `prompts/question.md` | M3-06 | User turn: the question plus scope context (`$question`, `$company_codes`, `$as_of`) |
+| `db/session.py` | M3-06 | `app_transaction(engine)`: read-write transaction as `vc_app` |
 
 ### Provider selection
 
@@ -226,6 +233,47 @@ flowchart LR
 - **Verified live (2026-11-22)** on Claude Haiku 4.5 (`eu.` and `global.` profiles): structured output and tools combine in one Converse request, the trimmed `Answer` schema is accepted, and `thinking: disabled` is accepted. This settles the open question in ADR-012's risks.
 - **Interim model:** the account cannot call Haiku 5.5 yet ("not available for this account" in every region and in the console). Development uses `global.anthropic.claude-haiku-4-5-20251001-v1:0` until AWS grants access (ADR-012 update); both prices are in `config/model_prices.yaml`. M3-10 recordings wait for Haiku 5.5.
 
+### Agent loop and `vc ask`
+
+```mermaid
+sequenceDiagram
+  participant CLI as vc ask
+  participant AG as Agent loop
+  participant RUN as app.run
+  participant LLM as Provider
+  participant MCP as MCP client session
+  participant CHK as check_answer
+  CLI->>AG: question, dev-user principal
+  AG->>RUN: insert RUNNING
+  AG->>MCP: tools/list
+  loop until a valid answer or a limit
+    AG->>LLM: messages, tool specs, Answer schema
+    LLM-->>AG: tool calls or an answer
+    alt tool calls
+      AG->>MCP: up to 4 calls, one after another (run cache first)
+      MCP-->>AG: structured results; facts land in the run's ledger
+    else answer
+      AG->>CHK: schema, placeholders, fact and citation references
+      CHK-->>AG: rendered Markdown, or violations for one repair turn
+    end
+  end
+  AG->>RUN: status, tokens, cost, output
+  AG-->>CLI: RunResult
+```
+
+- **Messages:** the system prompt (`system/qa`), then the user turn (`question`: the question, the principal's company codes and the data's as-of date). Tool definitions come from the MCP session's `tools/list`. Every call asks for the `Answer` schema at temperature 0 with 2,000 output tokens and a 60 s provider timeout.
+- **Tool calls (ADR-013):** one after another in the model's order, at most four per turn; later calls in the turn get a `TOOL_LIMIT` error result asking for them next turn. At most twelve executed calls per run, after which calls get a `TOOL_LIMIT` result asking for an answer. The model receives each result as the canonical JSON of the tool's structured content, so recordings and replays see identical bytes.
+- **Tool cache:** keyed by tool, arguments and data version. Only successful results are cached, and cache hits do not count towards the twelve calls. The data version is the SHA-256 of the seeded tables' checksums in `generated/manifest.json`; the as-of date comes from the same file.
+- **Answer check:** before M5's validators, `check_answer` parses the `Answer` schema, checks every placeholder (syntax, fact in this run's ledger, modifier allowed for the fact's kind), every impact and evidence fact ID and every citation, and reports all problems at once so the single repair turn can fix them together. A completion cut off at the token limit counts as a violation. After the repair turn, remaining violations end the run as `FAILED_VALIDATION`.
+- **Outcomes:** `SUCCEEDED`; `FAILED_VALIDATION`; `ABORTED_BUDGET` when the summed cost passes `VC_MAX_COST_USD_PER_RUN` (default USD 0.50, §12.3); `FAILED` for the turn limit, the 90 s wall clock, a provider error or a refusal. An unexpected exception closes the run as `FAILED` ("internal error") and is re-raised.
+- **Cost:** after every call, from `config/model_prices.yaml` by `VC_LLM_MODEL`. Replayed runs report the cost of the recorded model, so a budget abort replays the same way.
+- **Wall clock:** the provider call runs in a worker thread; at the 90 s deadline the loop stops waiting for it, although the abandoned call may still finish and be billed.
+- **Run record:** `app.run` is written as `vc_app` at start (`RUNNING`) and at the end (status, tokens, cost, `output` with the answer, Markdown, violations or error). `prompt_version` is `qa@1`; the prompt SHA-256 values travel in `RUN_STARTED`.
+- **Events:** `RUN_STARTED` (prompt IDs, versions and SHA-256, model, configuration hash, data version), `LLM_CALL` (its `request_sha256` equals the replay cassette key), `TOOL_CALL`, `FACTS_REGISTERED`, `VALIDATION`, `REPAIR_REQUESTED`, `RUN_COMPLETED` or `RUN_FAILED`. They go to `MemoryEvents` until the hash-chained writer (M5-01) and its wiring (M5-10).
+- **`vc ask`:** the user comes from `config/dev_users.yaml`; the `group` claim expands to every company code in `md.company_code`. Users without a finance role or company scope are refused before any model call. `VC_MCP_TRANSPORT=http` is refused until the remote endpoint exists (M2-18).
+- **First live run (2026-11-22,** Claude Haiku 4.5, `dev` profile): `SUCCEEDED` in 2 turns and 2 tool calls, about 15,500 input and 300 output tokens, USD 0.017, 14 s. The answer was weak: the model chose period 10, which is still open, and `BUD25` instead of `BUD26`. The question context should name the last closed period and the year's budget version; that prompt work belongs to M3-10.
+- **Not yet:** deterministic fallback (M5-09), the full validators (M5-03..05), the scope classifier (M5-06), persisted audit events (M5-01, M5-10).
+
 ### Schemas and prompts
 
 - **Output models reject unknown fields** (`extra="forbid"`). The exported JSON schemas therefore carry `additionalProperties: false`, as structured-output APIs expect, and a stray field fails validation instead of being silently dropped. Otherwise the models are §12.4 as written.
@@ -263,3 +311,4 @@ flowchart LR
 - 2026-11-08 — ADR-012: Bedrock with Claude Haiku 5.5 is the default model; `VC_LLM_PROVIDER` defaults to `bedrock`.
 - 2026-11-08 — Renderer built (M3-07).
 - 2026-11-22 — Bedrock provider built (M3-02); live smoke test layer added. Claude Haiku 4.5 is the interim development model until the account has Haiku 5.5 access.
+- 2026-11-22 — Agent loop and `vc ask` built (M3-06, M3-08). ADR-013: a turn's tool calls run one after another. The per-run cost cap default follows §12.3 (USD 0.50).

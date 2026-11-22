@@ -64,8 +64,6 @@ flowchart LR
 | Local stack | `docker-compose.yml`, `ops/otel-collector.yaml`, `Makefile` |
 | CI | `.github/workflows/ci.yml`; coverage gate `scripts/coverage_gate.py` (report-only until M2) |
 
-Open spec gap: §24 refers to §12.3 for the `VC_MAX_COST_USD_PER_RUN` default, but §12.3 has no cost value. Default is USD 1.00 until SPEC.md says otherwise.
-
 ## Decisions log
 
 | Date | ADR | Decision | Docs affected |
@@ -74,6 +72,7 @@ Open spec gap: §24 refers to §12.3 for the `VC_MAX_COST_USD_PER_RUN` default, 
 | 2026-10-13 | [ADR-010](../docs/adr/0010-ddl-corrections.md) | DDL corrections: `varchar(20)` cost centers, RLS on `rpt.unbalanced_documents`, missing grants | 01 |
 | 2026-11-08 | [ADR-011](../docs/adr/0011-reject-identity-in-tool-arguments.md) | Scope and run identifiers in tool arguments are rejected; in `_meta` ignored | 04 |
 | 2026-11-08 | [ADR-012](../docs/adr/0012-bedrock-haiku-default-model.md) | Default model: Amazon Bedrock (Converse) with Claude Haiku 5.5; rejected sampling parameters not sent | 05 |
+| 2026-11-22 | [ADR-013](../docs/adr/0013-sequential-tool-calls.md) | A turn's tool calls run one after another in the model's order, at most four per turn | 05 |
 
 ## Conventions
 

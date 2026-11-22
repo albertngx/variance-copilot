@@ -95,7 +95,7 @@ class Settings(BaseSettings):
     # Q&A limits from SPEC §12.3; commentary limits are applied by the pipeline.
     max_turns: Annotated[int, Field(ge=1)] = 8
     max_tool_calls: Annotated[int, Field(ge=0)] = 12
-    max_cost_usd_per_run: Annotated[Decimal, Field(gt=0)] = Decimal("1.00")
+    max_cost_usd_per_run: Annotated[Decimal, Field(gt=0)] = Decimal("0.50")
 
     store_llm_content: bool = True
 

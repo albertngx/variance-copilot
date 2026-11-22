@@ -177,7 +177,26 @@ def ask(
     ] = False,
 ) -> None:
     """Ask a question as a development user."""
-    _not_implemented("M3")
+    import json
+
+    import anyio
+
+    from variance_copilot.agent.ask import ask_as_dev_user
+    from variance_copilot.config import ConfigError
+
+    try:
+        result = anyio.run(ask_as_dev_user, question, user)
+    except ConfigError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    if json_output:
+        typer.echo(json.dumps(result.as_json(), indent=2))
+    elif result.markdown is not None:
+        typer.echo(result.markdown)
+    if result.status != "SUCCEEDED":
+        reason = result.error or "; ".join(result.violations)
+        typer.echo(f"run {result.run_id} {result.status}: {reason}", err=True)
+        raise typer.Exit(code=1)
 
 
 commentary_app = typer.Typer(help="Month-end commentary drafts and workflow.", no_args_is_help=True)

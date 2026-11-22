@@ -1,4 +1,9 @@
 {
+  "question": {
+    "id": "question",
+    "sha256": "aba2068ee1d71455c4fc557230f121526ce4720b2e492fd72aafff274205d576",
+    "version": 1
+  },
   "repair": {
     "id": "repair",
     "sha256": "89de38812e865a329ee63b5a33ef575bcd2a5905c05c91f4a635248eba70a3aa",
