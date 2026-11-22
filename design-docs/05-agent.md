@@ -127,12 +127,15 @@ Never calculate; never type digits; always state scope; separate FX; explain mat
 
 ### Built so far
 
-M3-01 (provider interface), M3-03 (replay and record), M3-04 (output schemas) and M3-05 (prompt management) on branch `e3-agent-groundwork`. Nothing here calls a live model. OD-1 is settled by ADR-012 (Bedrock, Claude Haiku 5.5); the Bedrock provider itself (M3-02) waits for AWS access. The renderer (M3-07) followed on branch `e3-renderer`. Next: the loop (M3-06).
+M3-01 (provider interface), M3-03 (replay and record), M3-04 (output schemas) and M3-05 (prompt management) on branch `e3-agent-groundwork`. OD-1 is settled by ADR-012 (Bedrock, Claude Haiku 5.5). The renderer (M3-07) followed on branch `e3-renderer`, and the Bedrock provider (M3-02) on branch `e3-bedrock-provider`. Next: the loop (M3-06).
 
 | Module | Task | Contents |
 | --- | --- | --- |
 | `agent/providers/base.py` | M3-01 | §12.2 dataclasses (`ToolSpec`, `ToolCall`, `Message`, `Usage`, `Completion`), `LLMProvider` and `EmbeddingProvider` protocols, `ProviderError` |
-| `agent/providers/factory.py` | M3-01 | `make_llm_provider(settings)`; `LIVE_PROVIDERS` maps `VC_LLM_PROVIDER` values to live implementations (empty until M3-02) |
+| `agent/providers/factory.py` | M3-01 | `make_llm_provider(settings)`; `LIVE_PROVIDERS` maps `VC_LLM_PROVIDER` values to live implementations (`bedrock` since M3-02) |
+| `agent/providers/bedrock.py` | M3-02 | `BedrockProvider` (Converse API); pure helpers `converse_request`, `completion`, `supported_schema`; `STOP_REASONS` |
+| `config/model_prices.yaml` | M3-02 | `global.anthropic.claude-haiku-5-5` at USD 0.10 / 0.50 per million tokens |
+| `tests/live/` | M3-02 | Live smoke test, skipped unless `VC_LIVE_TESTS=1` (`make test-live`) |
 | `agent/providers/replay.py` | M3-03 | `request_payload`, `request_sha256`, `CassetteStore`, `ReplayProvider`, `RecordingProvider`, `RecordingNotFoundError` |
 | `agent/schemas.py` | M3-04 | §12.4 `ScopeEcho`, `Driver`, `Answer`, `CommentarySection`, `Commentary`; `RESPONSE_MODELS` |
 | `agent/prompts.py` | M3-05 | `load_prompt(name)` returns a `Prompt` (front matter and template); `Prompt.render(**variables)` returns a `RenderedPrompt` (text and SHA-256) |
@@ -188,6 +191,40 @@ sequenceDiagram
 - **Per-case folders:** the eval runner (M7) can pass one sub-folder per golden case as `cassettes`; the store works the same either way.
 - **Failures:** a missing recording raises `RecordingNotFoundError` with the request hash, the model and how to re-record. A corrupt cassette, one in another format, or one saved under the wrong name raises `ProviderError`.
 
+### Bedrock provider
+
+```mermaid
+flowchart LR
+  subgraph Interface["§12.2 request"]
+    SYS["system messages"]
+    MSG["user / assistant / tool messages"]
+    TL["ToolSpec list"]
+    RS["response_schema"]
+  end
+  subgraph Converse["Converse request"]
+    CS["system"]
+    CM["messages<br/>(toolUse, toolResult blocks)"]
+    TC["toolConfig"]
+    OC["outputConfig.textFormat<br/>json_schema"]
+    AF["additionalModelRequestFields<br/>thinking disabled (Claude)"]
+  end
+  SYS --> CS
+  MSG --> CM
+  TL --> TC
+  RS -- "unsupported keywords removed" --> OC
+```
+
+- **Messages:** system messages go to Converse `system`. An assistant message's tool calls become `toolUse` blocks after its text (empty text is left out). Each `tool` message becomes a `toolResult` block in a user turn, and consecutive same-role turns are merged, so parallel tool results travel together in one user message. A tool message without `tool_call_id` raises `ProviderError`.
+- **Sampling and reasoning (ADR-012):** for Claude model IDs (`anthropic.claude` in the ID) the provider sends no temperature and sets `thinking` to `disabled`; other Bedrock models get the requested temperature. The requested temperature stays in the replay key either way.
+- **Structured output:** Converse supports it natively through `outputConfig.textFormat` (`json_schema`), so no "submit answer" tool is needed. `supported_schema` removes the keywords Claude structured outputs reject (`minLength`, `maxLength`, `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `minItems`, `maxItems`). Property names are never removed. The pydantic models still enforce those limits when the loop parses the answer.
+- **Stop reasons:** `end_turn` and `stop_sequence` map to `end_turn`; `tool_use` to `tool_use`; `max_tokens` and `model_context_window_exceeded` to `max_tokens`; `guardrail_intervened` and `content_filtered` to `refusal`. `malformed_model_output`, `malformed_tool_use` and any unknown reason raise `ProviderError`.
+- **Retries:** botocore `standard` retry mode with `total_max_attempts = 4`: the first attempt plus three retries with exponential backoff and jitter, on throttling, transient 5xx and connection errors. Validation and access errors are not retried. Any failure, after retries or not, raises `ProviderError` with the Bedrock error code in the message.
+- **Timeouts:** botocore sets timeouts per client, not per call, so the provider keeps one client per `timeout_s` value (read timeout = `timeout_s`, connect timeout at most 5 s). A loop that passes a constant timeout uses a single client.
+- **`raw`:** `stop_reason` (Bedrock's own value), `request_id` and `latency_ms`. `model_id` is the pinned ID (`VC_LLM_MODEL`), because Converse does not echo the model.
+- **Credentials:** the default boto3 chain. Locally that is `aws login` with an IAM user, which boto3 reads only with `botocore[crt]`, a dev dependency. Deployed code uses an IAM role and needs no extra.
+- **Tests:** unit tests answer Converse at botocore's HTTP layer (`before-send`), so serialization, error parsing and retries run for real without network. `tests/live/test_bedrock_live.py` does a tool round trip ending in a valid `Answer`; it reads `VC_LLM_MODEL` from `.env` and runs only with `VC_LIVE_TESTS=1` (`make test-live`).
+- **Verified live (2026-11-22)** on `eu.anthropic.claude-haiku-4-5-20251001-v1:0`: structured output and tools combine in one Converse request, the trimmed `Answer` schema is accepted, and `thinking: disabled` is accepted. This settles the open question in ADR-012's risks. Haiku 5.5 itself could not be called yet: the account had not accepted its Marketplace offer, which only covers the global profile.
+
 ### Schemas and prompts
 
 - **Output models reject unknown fields** (`extra="forbid"`). The exported JSON schemas therefore carry `additionalProperties: false`, as structured-output APIs expect, and a stray field fails validation instead of being silently dropped. Otherwise the models are §12.4 as written.
@@ -224,3 +261,4 @@ flowchart LR
 - 2026-11-08 — Provider interface, replay and record, output schemas and prompt management built (M3-01, M3-03..M3-05).
 - 2026-11-08 — ADR-012: Bedrock with Claude Haiku 5.5 is the default model; `VC_LLM_PROVIDER` defaults to `bedrock`.
 - 2026-11-08 — Renderer built (M3-07).
+- 2026-11-22 — Bedrock provider built (M3-02); live smoke test layer added.

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from variance_copilot.agent.providers.base import LLMProvider
+from variance_copilot.agent.providers.bedrock import BedrockProvider
 from variance_copilot.agent.providers.replay import (
     DEFAULT_CASSETTE_DIR,
     RecordingProvider,
@@ -15,7 +16,11 @@ from variance_copilot.config import ConfigError, LLMProviderName, ReplayMode, Se
 
 LiveProviderFactory = Callable[[Settings, str], LLMProvider]
 
-LIVE_PROVIDERS: dict[LLMProviderName, LiveProviderFactory] = {}
+LIVE_PROVIDERS: dict[LLMProviderName, LiveProviderFactory] = {
+    LLMProviderName.BEDROCK: lambda settings, model_id: BedrockProvider(
+        model_id, region=settings.aws_region
+    ),
+}
 
 
 def make_llm_provider(settings: Settings, *, cassettes: Path = DEFAULT_CASSETTE_DIR) -> LLMProvider:

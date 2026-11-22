@@ -2323,6 +2323,7 @@ Each run writes `eval/reports/<timestamp>/report.md` and `report.json` (per-case
 | Contract | pytest + JSON Schema snapshots | Tool input and output schemas, API schemas (no unreviewed breaking changes) |
 | API | httpx `AsyncClient` | Endpoints, auth, RBAC, idempotency, problem details |
 | Security | pytest | Audit immutability, role grants, injection fixtures, scope labelling |
+| Live | pytest, opt-in (`VC_LIVE_TESTS=1`) | Smoke test of the live provider: a tool call round trip ending in a valid structured answer |
 | Evaluation | `vc eval` | §19 |
 
 Coverage targets: `finance` and `guardrails` packages at least 95% line coverage; overall at least 85%.

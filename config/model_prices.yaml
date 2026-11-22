@@ -6,3 +6,7 @@ models:
   replay:
     input_per_mtok: 0
     output_per_mtok: 0
+  # Bedrock Marketplace offer rate card, standard tier, prompts up to 100k tokens (ADR-012).
+  global.anthropic.claude-haiku-5-5:
+    input_per_mtok: 0.10
+    output_per_mtok: 0.50
