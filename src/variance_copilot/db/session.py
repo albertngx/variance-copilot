@@ -1,4 +1,4 @@
-"""RLS-scoped transactions for tool queries (SPEC §7.10, §13.6)."""
+"""Role-scoped transactions: RLS-limited tool queries and application writes (SPEC §7.10, §13.6)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from contextlib import contextmanager
 
 from sqlalchemy import Connection, Engine, text
 
+APP_ROLE = "vc_app"
 TOOL_READER_ROLE = "vc_tool_reader"
 DEFAULT_STATEMENT_TIMEOUT = "5s"
 COMPANY_SCOPE_SETTING = "app.company_scope"
@@ -46,4 +47,12 @@ def tool_transaction(
             text("SELECT set_config(:name, :scope, true)"),
             {"name": COMPANY_SCOPE_SETTING, "scope": scope},
         )
+        yield conn
+
+
+@contextmanager
+def app_transaction(engine: Engine) -> Iterator[Connection]:
+    """Read-write transaction as vc_app, the role that writes ``app``, ``review`` and ``audit``."""
+    with engine.begin() as conn:
+        conn.execute(text(f"SET LOCAL ROLE {APP_ROLE}"))
         yield conn

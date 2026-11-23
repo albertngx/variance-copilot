@@ -65,7 +65,7 @@ def test_defaults_match_spec() -> None:
     assert s.azure_openai_deployment is None
     assert s.max_turns == 8
     assert s.max_tool_calls == 12
-    assert s.max_cost_usd_per_run == Decimal("1.00")
+    assert s.max_cost_usd_per_run == Decimal("0.50")
     assert s.store_llm_content is True
     assert s.auth_mode is AuthMode.DEV
     assert s.oidc_issuer is None

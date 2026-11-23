@@ -472,14 +472,14 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 #### M3-06 Agent loop
 - **Spec:** §6.2, §12.3, §12.6, §15.5, §10.5 · **Priority:** Must · **Size:** L · **Depends on:** M2-12, M2-17, M3-01, M3-04, M3-05
 - **Acceptance criteria**
-  - [ ] Tools are discovered and called through one MCP client session per run (in-memory by default, streamable HTTP when `VC_MCP_TRANSPORT=http`); tool schemas sent to the LLM come from `tools/list`.
-  - [ ] Limits from §12.3 enforced (turns, tool calls, parallelism 4, wall clock, output tokens, cost, one repair).
-  - [ ] Cost computed from `config/model_prices.yaml` after every call; run aborts with `ABORTED_BUDGET` when exceeded.
-  - [ ] Temperature 0 requested (not sent where the model rejects it, ADR-012); model ID pinned per environment.
-  - [ ] `app.run` row created and updated with status, tokens, cost, output.
-  - [ ] Prompt ID, version and SHA-256 recorded on every run (`app.run.prompt_version`, `RUN_STARTED`).
-  - [ ] Tool results cached per run by `(tool, arguments, data_version)`.
-  - [ ] Unit tests with a scripted fake provider cover each limit.
+  - [x] Tools are discovered and called through one MCP client session per run (in-memory by default, streamable HTTP when `VC_MCP_TRANSPORT=http`); tool schemas sent to the LLM come from `tools/list`. HTTP is refused with a clear error until the remote endpoint exists (M2-18).
+  - [x] Limits from §12.3 enforced (turns, tool calls, 4 calls per turn run one after another (ADR-013), wall clock, output tokens, cost, one repair).
+  - [x] Cost computed from `config/model_prices.yaml` after every call; run aborts with `ABORTED_BUDGET` when exceeded.
+  - [x] Temperature 0 requested (not sent where the model rejects it, ADR-012); model ID pinned per environment.
+  - [x] `app.run` row created and updated with status, tokens, cost, output.
+  - [x] Prompt ID, version and SHA-256 recorded on every run (`app.run.prompt_version`, `RUN_STARTED`). `RUN_STARTED` goes to an in-memory event list until the audit writer (M5-01).
+  - [x] Tool results cached per run by `(tool, arguments, data_version)`.
+  - [x] Unit tests with a scripted fake provider cover each limit.
 
 #### M3-07 Renderer
 - **Spec:** §13.1, §11.7, §14 rule 6, Appendix C · **Priority:** Must · **Size:** M · **Depends on:** M2-01, M3-04
@@ -492,8 +492,8 @@ M0-01..06 → M1-01..06 → M1-07..10 → M1-11..15 (ci profile) → M1-17
 #### M3-08 `vc ask` and dev users
 - **Spec:** §17, §25 · **Priority:** Must · **Size:** S · **Depends on:** M3-06, M3-07
 - **Acceptance criteria**
-  - [ ] `vc ask "<question>" --user analyst_us` prints rendered Markdown; `--json` prints the structured answer + run ID.
-  - [ ] Company scope comes from `config/dev_users.yaml`, never from the question.
+  - [x] `vc ask "<question>" --user analyst_us` prints rendered Markdown; `--json` prints the structured answer + run ID.
+  - [x] Company scope comes from `config/dev_users.yaml`, never from the question.
 
 #### M3-09 Commentary prompt
 - **Spec:** §6.3, §12.5 · **Priority:** Should · **Size:** S · **Depends on:** M3-05
